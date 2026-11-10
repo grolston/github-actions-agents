@@ -1,12 +1,11 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Read-only, metadata-only role for the prerequisite-validator PR agent:
-  confirms referenced SSM parameters, secrets, IDs, and ARNs exist without
-  reading any parameter or secret values.
+  Read-only role for the quota-preflight PR agent: Service Quotas, AWS/Usage
+  metrics, and resource counts. No resource configuration, data, or secrets.
 
 # Deploy in every account/region pair this persona must inspect. The agent
-# runs Claude through the separate Bedrock role (../bedrock-invoke-role.yml);
+# runs Claude through the separate Bedrock role (infra/cloudformation/bedrock-invoke-role.yml);
 # this role has NO Bedrock access and only the read-only APIs listed below.
 
 Parameters:
@@ -60,7 +59,7 @@ Parameters:
 
   RoleName:
     Type: String
-    Default: github-pr-agent-prerequisite-validator
+    Default: github-pr-agent-quota-preflight
     AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
 
   MaxSessionDuration:
@@ -80,7 +79,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
-      Description: Metadata-only existence checks for resources referenced by a PR.
+      Description: Read Service Quotas, usage metrics, and resource counts for PR quota preflight checks.
       MaxSessionDuration: !Ref MaxSessionDuration
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -111,64 +110,58 @@ Resources:
                     - - !Sub repo:${GitHubOrganization}/${RepositoryName}:environment:${GitHubEnvironmentName}
                       - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:environment:${GitHubEnvironmentName}
       Policies:
-        - PolicyName: prerequisite-validator-read
+        - PolicyName: quota-preflight-read
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ParameterAndSecretMetadataOnly
-                # DescribeParameters/DescribeSecret return names and metadata,
-                # never values.
+              - Sid: ServiceQuotasRead
                 Effect: Allow
                 Action:
-                  - ssm:DescribeParameters
-                  - secretsmanager:DescribeSecret
-                  - secretsmanager:ListSecrets
+                  - servicequotas:GetServiceQuota
+                  - servicequotas:GetAWSDefaultServiceQuota
+                  - servicequotas:ListServiceQuotas
+                  - servicequotas:ListAWSDefaultServiceQuotas
+                  - servicequotas:ListServices
+                  - servicequotas:ListRequestedServiceQuotaChangeHistoryByQuota
                 Resource: "*"
-              - Sid: PublicAwsParameters
+              - Sid: UsageMetrics
+                # AWS/Usage metrics give current usage for most quotas.
                 Effect: Allow
                 Action:
-                  - ssm:GetParameter
-                  - ssm:GetParameters
-                Resource: !Sub arn:${AWS::Partition}:ssm:*::parameter/aws/service/*
-              - Sid: NetworkAndImageIds
+                  - cloudwatch:GetMetricData
+                  - cloudwatch:GetMetricStatistics
+                  - cloudwatch:ListMetrics
+                Resource: "*"
+              - Sid: AccountLimitApis
+                # Services that publish limits/usage outside Service Quotas.
                 Effect: Allow
                 Action:
-                  - ec2:DescribeAvailabilityZones
-                  - ec2:DescribeImages
-                  - ec2:DescribeKeyPairs
-                  - ec2:DescribeLaunchTemplates
-                  - ec2:DescribeManagedPrefixLists
+                  - autoscaling:DescribeAccountLimits
+                  - cloudformation:DescribeAccountLimits
+                  - dynamodb:DescribeLimits
+                  - elasticloadbalancing:DescribeAccountLimits
+                  - iam:GetAccountSummary
+                  - lambda:GetAccountSettings
+                  - rds:DescribeAccountAttributes
+                  - route53:GetAccountLimit
+                  - ses:GetSendQuota
+                Resource: "*"
+              - Sid: ResourceCountsWithoutMetrics
+                # Counting only; none of these return secrets or data contents.
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAddresses
+                  - ec2:DescribeInternetGateways
+                  - ec2:DescribeNatGateways
+                  - ec2:DescribeNetworkInterfaces
                   - ec2:DescribeSecurityGroups
                   - ec2:DescribeSubnets
                   - ec2:DescribeTransitGateways
                   - ec2:DescribeVpcEndpoints
                   - ec2:DescribeVpcs
-                Resource: "*"
-              - Sid: ReferencedResourceMetadata
-                Effect: Allow
-                Action:
-                  - acm:DescribeCertificate
-                  - cloudformation:ListExports
-                  - cognito-idp:DescribeUserPool
-                  - dynamodb:DescribeTable
-                  - ecr:DescribeImages
-                  - ecr:DescribeRepositories
-                  - elasticloadbalancing:DescribeListeners
-                  - elasticloadbalancing:DescribeLoadBalancers
-                  - elasticloadbalancing:DescribeTargetGroups
-                  - events:DescribeEventBus
-                  - iam:GetInstanceProfile
-                  - iam:GetPolicy
-                  - iam:GetRole
-                  - kms:DescribeKey
-                  - kms:ListAliases
-                  - lambda:GetLayerVersion
-                  - logs:DescribeLogGroups
-                  - route53:GetHostedZone
-                  - route53:ListHostedZonesByName
-                  - s3:GetBucketLocation
-                  - sns:GetTopicAttributes
-                  - sqs:GetQueueUrl
+                  - eks:ListClusters
+                  - ecs:ListClusters
+                  - s3:ListAllMyBuckets
                 Resource: "*"
         - PolicyName: deny-data-reads
           PolicyDocument:
@@ -210,9 +203,9 @@ Resources:
                   - !Sub arn:${AWS::Partition}:ssm:*::parameter/aws/service/*
       Tags:
         - Key: pr-agent-role
-          Value: prerequisite-validator
+          Value: quota-preflight
 
 Outputs:
   RoleArn:
-    Description: Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
+    Description: Store as the AWS_PR_AGENT_QUOTA_ROLE_ARN secret (repository or environment).
     Value: !GetAtt PersonaRole.Arn

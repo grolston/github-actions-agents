@@ -14,8 +14,8 @@ import secrets
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-SHARED = ROOT / "shared"
+# .github/actions/_shared/scripts/prepare.py -> .github/actions/_shared
+SHARED = Path(__file__).resolve().parent.parent
 
 
 def env(name: str, default: str = "") -> str:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate <persona>/action.yml for every persona from one template.
+"""Generate .github/actions/<persona>/action.yml for every persona from one template.
 
-Each persona is its own GitHub Action (uses: platformr/github-actions-agents/<persona>@v1)
+Each persona is its own GitHub Action (uses: platformr/github-actions-agents/.github/actions/<persona>@v1)
 but the step wiring lives in scripts/action.template.yml so the actions never drift.
 
   python3 scripts/generate_actions.py           # write all action.yml files
@@ -16,6 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "scripts" / "action.template.yml"
+ACTIONS = ROOT / ".github" / "actions"
 
 ROLE_DESCRIPTIONS = {
     "required": (
@@ -31,7 +32,7 @@ ROLE_DESCRIPTIONS = {
 
 
 def personas() -> list[Path]:
-    return sorted(p.parent for p in ROOT.glob("*/persona.json"))
+    return sorted(p.parent for p in ACTIONS.glob("*/persona.json"))
 
 
 def render(persona_dir: Path) -> str:

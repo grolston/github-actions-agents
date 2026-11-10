@@ -1,12 +1,12 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  OPTIONAL read-only role for the deployment-plan-analysis PR agent. The
-  persona works from plan files alone; deploy this only if it should also
-  read live CloudFormation change sets and the AWS Pricing API.
+  Read-only, metadata-only role for the prerequisite-validator PR agent:
+  confirms referenced SSM parameters, secrets, IDs, and ARNs exist without
+  reading any parameter or secret values.
 
 # Deploy in every account/region pair this persona must inspect. The agent
-# runs Claude through the separate Bedrock role (../bedrock-invoke-role.yml);
+# runs Claude through the separate Bedrock role (infra/cloudformation/bedrock-invoke-role.yml);
 # this role has NO Bedrock access and only the read-only APIs listed below.
 
 Parameters:
@@ -60,7 +60,7 @@ Parameters:
 
   RoleName:
     Type: String
-    Default: github-pr-agent-deployment-plan-analysis
+    Default: github-pr-agent-prerequisite-validator
     AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
 
   MaxSessionDuration:
@@ -68,13 +68,6 @@ Parameters:
     Default: 3600
     MinValue: 900
     MaxValue: 43200
-
-  StackNamePattern:
-    Type: String
-    Description: >-
-      CloudFormation stack names whose change sets the agent may read
-      (wildcards allowed), e.g. myapp-*. Use * for all stacks.
-    Default: "*"
 
 Conditions:
   UseDefaultProviderArn: !Equals ["", !Ref OidcProviderArn]
@@ -87,7 +80,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
-      Description: Read CloudFormation change sets for allowed stacks and AWS pricing.
+      Description: Metadata-only existence checks for resources referenced by a PR.
       MaxSessionDuration: !Ref MaxSessionDuration
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -118,25 +111,64 @@ Resources:
                     - - !Sub repo:${GitHubOrganization}/${RepositoryName}:environment:${GitHubEnvironmentName}
                       - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:environment:${GitHubEnvironmentName}
       Policies:
-        - PolicyName: deployment-plan-analysis-read
+        - PolicyName: prerequisite-validator-read
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ChangeSetsForAllowedStacks
+              - Sid: ParameterAndSecretMetadataOnly
+                # DescribeParameters/DescribeSecret return names and metadata,
+                # never values.
                 Effect: Allow
                 Action:
-                  - cloudformation:DescribeChangeSet
-                  - cloudformation:DescribeStacks
-                  - cloudformation:ListChangeSets
-                  - cloudformation:ListStackResources
-                Resource: !Sub arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/${StackNamePattern}/*
-              - Sid: PricingLookups
-                # Pricing API has no resource-level permissions.
+                  - ssm:DescribeParameters
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:ListSecrets
+                Resource: "*"
+              - Sid: PublicAwsParameters
                 Effect: Allow
                 Action:
-                  - pricing:DescribeServices
-                  - pricing:GetAttributeValues
-                  - pricing:GetProducts
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub arn:${AWS::Partition}:ssm:*::parameter/aws/service/*
+              - Sid: NetworkAndImageIds
+                Effect: Allow
+                Action:
+                  - ec2:DescribeAvailabilityZones
+                  - ec2:DescribeImages
+                  - ec2:DescribeKeyPairs
+                  - ec2:DescribeLaunchTemplates
+                  - ec2:DescribeManagedPrefixLists
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeTransitGateways
+                  - ec2:DescribeVpcEndpoints
+                  - ec2:DescribeVpcs
+                Resource: "*"
+              - Sid: ReferencedResourceMetadata
+                Effect: Allow
+                Action:
+                  - acm:DescribeCertificate
+                  - cloudformation:ListExports
+                  - cognito-idp:DescribeUserPool
+                  - dynamodb:DescribeTable
+                  - ecr:DescribeImages
+                  - ecr:DescribeRepositories
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:DescribeLoadBalancers
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - events:DescribeEventBus
+                  - iam:GetInstanceProfile
+                  - iam:GetPolicy
+                  - iam:GetRole
+                  - kms:DescribeKey
+                  - kms:ListAliases
+                  - lambda:GetLayerVersion
+                  - logs:DescribeLogGroups
+                  - route53:GetHostedZone
+                  - route53:ListHostedZonesByName
+                  - s3:GetBucketLocation
+                  - sns:GetTopicAttributes
+                  - sqs:GetQueueUrl
                 Resource: "*"
         - PolicyName: deny-data-reads
           PolicyDocument:
@@ -178,9 +210,9 @@ Resources:
                   - !Sub arn:${AWS::Partition}:ssm:*::parameter/aws/service/*
       Tags:
         - Key: pr-agent-role
-          Value: deployment-plan-analysis
+          Value: prerequisite-validator
 
 Outputs:
   RoleArn:
-    Description: Store as the AWS_PR_AGENT_PLAN_ROLE_ARN secret (repository or environment).
+    Description: Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
     Value: !GetAtt PersonaRole.Arn

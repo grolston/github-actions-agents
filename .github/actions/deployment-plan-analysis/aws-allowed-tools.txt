@@ -1,5 +1,5 @@
 # Only granted when target-role-arn is set (aws_access: optional).
-# Mirrors infra/cloudformation/personas/deployment-plan-analysis-role.yml.
+# Mirrors infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml.
 Bash(aws cloudformation describe-change-set *)
 Bash(aws cloudformation describe-stacks *)
 Bash(aws cloudformation list-change-sets *)

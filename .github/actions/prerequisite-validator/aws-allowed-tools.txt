@@ -1,5 +1,5 @@
 # Read-only, metadata-only AWS CLI commands for prerequisite-validator.
-# Mirrors infra/cloudformation/personas/prerequisite-validator-role.yml.
+# Mirrors infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml.
 # Note: no `ssm get-parameter`/`secretsmanager get-secret-value` (values).
 Bash(aws ssm describe-parameters *)
 Bash(aws ssm get-parameters --names /aws/service/*)

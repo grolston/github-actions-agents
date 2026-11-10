@@ -26,7 +26,7 @@ if ! git -C "${GITHUB_WORKSPACE:-.}" rev-parse --git-dir >/dev/null 2>&1; then
   exit 1
 fi
 
-# Does this persona get AWS access? Driven by <persona>/persona.json.
+# Does this persona get AWS access? Driven by .github/actions/<persona>/persona.json.
 aws_access=$(jq -r '.aws_access // "none"' "$PERSONA_DIR/persona.json")
 use_aws=false
 case "$aws_access" in

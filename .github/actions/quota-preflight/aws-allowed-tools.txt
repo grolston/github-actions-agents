@@ -1,5 +1,5 @@
 # Read-only AWS CLI commands for quota-preflight. Mirrors
-# infra/cloudformation/personas/quota-preflight-role.yml; the IAM role is the
+# infra/cloudformation/quota-preflight/quota-preflight-role.yml; the IAM role is the
 # real boundary, this list keeps the agent from even trying anything else.
 Bash(aws service-quotas get-service-quota *)
 Bash(aws service-quotas get-aws-default-service-quota *)

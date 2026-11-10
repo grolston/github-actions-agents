@@ -9,9 +9,9 @@ findings back to the PR.
 
 | Action | What it does | AWS access |
 |---|---|---|
-| `platformr/github-actions-agents/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | **required**: read-only quota/usage role |
-| `platformr/github-actions-agents/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | **required**: read-only metadata role |
-| `platformr/github-actions-agents/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | **optional**: works from plan files with Bedrock only |
+| `platformr/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | **required**: read-only quota/usage role |
+| `platformr/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | **required**: read-only metadata role |
+| `platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | **optional**: works from plan files with Bedrock only |
 
 ## How it works
 
@@ -36,7 +36,7 @@ Least privilege is enforced in three layers:
    environment, optionally only a specific workflow file
    (`job_workflow_ref`).
 3. **Agent tools**: Claude Code runs with an allowlist of exact read-only
-   `aws` subcommands per persona (`<persona>/aws-allowed-tools.txt`), no
+   `aws` subcommands per persona (`.github/actions/<persona>/aws-allowed-tools.txt`), no
    Edit/Write/Web tools, and deny rules for `--endpoint-url`, `--debug`,
    `aws configure`, and reading `~/.aws`. A persona with no role configured
    gets no AWS CLI permissions at all.
@@ -54,9 +54,9 @@ is schema-checked and sanitized (no @mentions, no HTML) before it is posted.
 |---|---|---|
 | `github-oidc-provider.yml` | Once per account (skip if the provider already exists) | — |
 | `bedrock-invoke-role.yml` | The account where Bedrock runs | `AWS_PR_AGENT_BEDROCK_ROLE_ARN` |
-| `personas/quota-preflight-role.yml` | Every account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
-| `personas/prerequisite-validator-role.yml` | Every account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
-| `personas/deployment-plan-analysis-role.yml` | Optional: only for live change set / pricing lookups | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
+| `quota-preflight/quota-preflight-role.yml` | Every account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
+| `prerequisite-validator/prerequisite-validator-role.yml` | Every account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
+| `deployment-plan-analysis/deployment-plan-analysis-role.yml` | Optional: only for live change set / pricing lookups | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
 
 ```bash
 aws cloudformation deploy --stack-name github-oidc-provider \
@@ -72,7 +72,7 @@ aws cloudformation deploy --stack-name github-pr-agent-bedrock \
 
 ```bash
 aws cloudformation deploy --stack-name github-pr-agent-quota-preflight \
-  --template-file infra/cloudformation/personas/quota-preflight-role.yml \
+  --template-file infra/cloudformation/quota-preflight/quota-preflight-role.yml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides GitHubOrganization=platformr RepositoryName=my-app TrustMode=pull_request
 ```
@@ -125,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: platformr/github-actions-agents/prerequisite-validator@v1
+      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
         with:
           aws-region: us-east-1
           target-environment: dev
@@ -173,24 +173,28 @@ Outputs: `verdict` (`pass`/`findings`/`error`), `highest-severity`,
 ## Repository layout
 
 ```
-quota-preflight/            one directory per persona = one action
-  action.yml                GENERATED from scripts/action.template.yml
-  persona.json              title, description, aws_access, role template, extra inputs
-  prompt.md                 persona instructions
-  schema.json               structured report contract
-  aws-allowed-tools.txt     read-only aws CLI rules (only granted when a role is assumed)
-prerequisite-validator/
-deployment-plan-analysis/
-shared/                     prompt sections and tool allow/deny lists used by every persona
-scripts/                    context gathering, prompt build, report render, comment upsert,
-                            action.template.yml + generate_actions.py
-infra/cloudformation/       OIDC provider, Bedrock role, personas/<persona>-role.yml
+.github/actions/
+  quota-preflight/          one directory per persona = one action
+    action.yml              GENERATED from scripts/action.template.yml
+    persona.json            title, description, aws_access, role template, extra inputs
+    prompt.md               persona instructions
+    schema.json             structured report contract
+    aws-allowed-tools.txt   read-only aws CLI rules (only granted when a role is assumed)
+  prerequisite-validator/
+  deployment-plan-analysis/
+  _shared/                  prompt sections + tool allow/deny lists used by every persona
+    scripts/                context gathering, prompt build, report render, comment upsert
+infra/cloudformation/
+  github-oidc-provider.yml  shared: once per account
+  bedrock-invoke-role.yml   shared: Bedrock-only role used by every persona
+  <persona>/<persona>-role.yml   read-only OIDC role for each persona that needs AWS
+scripts/                    action.template.yml + generate_actions.py (repo tooling)
 examples/workflows/         workflows to copy into target repositories
 ```
 
 ## Adding a persona
 
-1. Create `<name>/` with `persona.json`, `prompt.md`, `schema.json` (no
+1. Create `.github/actions/<name>/` with `persona.json`, `prompt.md`, `schema.json` (no
    single quotes), and `aws-allowed-tools.txt` if it uses AWS.
    `persona.json`:
    ```json
@@ -205,9 +209,9 @@ examples/workflows/         workflows to copy into target repositories
    ```
    `aws_access` is `required`, `optional`, or `none`. A `none` persona's
    action has no `target-role-arn` input and needs only the Bedrock role.
-2. If it uses AWS, add `infra/cloudformation/personas/<name>-role.yml`
+2. If it uses AWS, add `infra/cloudformation/<name>/<name>-role.yml`
    with only the read APIs that match `aws-allowed-tools.txt`.
-3. Run `python3 scripts/generate_actions.py` to create `<name>/action.yml`.
+3. Run `python3 scripts/generate_actions.py` to create `.github/actions/<name>/action.yml`.
    CI fails if a generated action is out of date.
 
 Prompts can use `{{CONTEXT_DIR}}`, `{{AWS_PROFILE}}`, `{{TARGET_REGION}}`,
@@ -216,5 +220,5 @@ Prompts can use `{{CONTEXT_DIR}}`, `{{AWS_PROFILE}}`, `{{TARGET_REGION}}`,
 
 ## Versioning
 
-Consumers pin each persona action to a release tag (`.../quota-preflight@v1`) or a commit SHA; all personas are versioned together with the repository. Tag releases
+Consumers pin each persona action to a release tag (`.../.github/actions/quota-preflight@v1`) or a commit SHA; all personas are versioned together with the repository. Tag releases
 from `main` and move the `v1` major tag forward for compatible changes.

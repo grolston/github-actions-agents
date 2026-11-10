@@ -3,6 +3,6 @@
   "description": "Checks that SSM parameters, secrets, hard-coded resource IDs/ARNs, and exports referenced by the change exist in the target account (metadata only).",
   "icon": "check-square",
   "aws_access": "required",
-  "role_template": "infra/cloudformation/personas/prerequisite-validator-role.yml",
+  "role_template": "infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml",
   "inputs": []
 }

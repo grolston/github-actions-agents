@@ -1,5 +1,5 @@
 # GENERATED FILE: do not edit by hand.
-# Source: scripts/action.template.yml + prerequisite-validator/persona.json
+# Source: scripts/action.template.yml + .github/actions/prerequisite-validator/persona.json
 # Regenerate: python3 scripts/generate_actions.py
 name: "PR Agent: Prerequisite Validator"
 description: >-
@@ -21,7 +21,7 @@ inputs:
     required: true
   target-role-arn:
     description: >-
-      Read-only role for this persona (infra/cloudformation/personas/prerequisite-validator-role.yml), assumed via OIDC to inspect the target account. Pass it from a repository or environment secret.
+      Read-only role for this persona (infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml), assumed via OIDC to inspect the target account. Pass it from a repository or environment secret.
     required: true
     default: ""
   bedrock-region:
@@ -141,7 +141,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
         REPO_GUIDANCE_PATH: ${{ inputs.repo-guidance-path }}
         ORG_RULES: ${{ inputs.org-rules }}
-      run: bash "$PERSONA_DIR/../scripts/gather-context.sh"
+      run: bash "$PERSONA_DIR/../_shared/scripts/gather-context.sh"
 
     # Read-only persona role -> named profile (never exported as env vars).
     - name: Assume persona role (target account)
@@ -184,7 +184,7 @@ runs:
         EXTRA_ALLOWED_TOOLS: ${{ inputs.extra-allowed-tools }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ steps.context.outputs.pr-number }}
-      run: python3 "$PERSONA_DIR/../scripts/prepare.py"
+      run: python3 "$PERSONA_DIR/../_shared/scripts/prepare.py"
 
     - name: Run prerequisite-validator agent
       id: agent
@@ -215,7 +215,7 @@ runs:
         FAIL_ON: ${{ inputs.fail-on }}
         FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
         RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: python3 "$PERSONA_DIR/../scripts/render_report.py"
+      run: python3 "$PERSONA_DIR/../_shared/scripts/render_report.py"
 
     - name: Post report comment
       if: always() && inputs.comment == 'true' && steps.report.outcome == 'success'
@@ -227,7 +227,7 @@ runs:
         PR_NUMBER: ${{ steps.context.outputs.pr-number }}
         MARKER: ${{ steps.report.outputs.marker }}
         BODY_FILE: ${{ steps.report.outputs.report-markdown }}
-      run: bash "$PERSONA_DIR/../scripts/upsert-comment.sh"
+      run: bash "$PERSONA_DIR/../_shared/scripts/upsert-comment.sh"
 
     - name: Remove persona credentials
       if: always()

@@ -4,7 +4,7 @@ Description: >-
   Bedrock-only role for the GitHub Actions PR review agents. Every persona
   uses this role to run Claude; it can invoke Anthropic models and nothing
   else. Personas that inspect AWS get a SEPARATE read-only role from
-  infra/cloudformation/personas/.
+  infra/cloudformation/<persona>/.
 
 Metadata:
   AWS::CloudFormation::Interface:

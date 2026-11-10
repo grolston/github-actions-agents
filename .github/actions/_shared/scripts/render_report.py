@@ -19,7 +19,8 @@ VERDICT_ICON = {"pass": "✅", "findings": "⚠️", "error": "❌"}
 MAX_COMMENT_CHARS = 60000
 MAX_CELL_CHARS = 600
 
-ROOT = Path(__file__).resolve().parent.parent
+# .github/actions/_shared/scripts -> .github/actions
+ACTIONS = Path(__file__).resolve().parent.parent.parent
 
 
 def env(name: str, default: str = "") -> str:
@@ -81,7 +82,7 @@ def load_structured_output() -> tuple[dict | None, str]:
 
 def validate(report: dict, persona: str) -> list[str]:
     problems = []
-    schema_path = Path(env("PERSONA_DIR") or ROOT / persona) / "schema.json"
+    schema_path = Path(env("PERSONA_DIR") or ACTIONS / persona) / "schema.json"
     required = []
     if schema_path.is_file():
         required = json.loads(schema_path.read_text()).get("required", [])

@@ -3,7 +3,7 @@
   "description": "Explains CloudFormation change sets / Terraform plans per environment and flags risky changes. Works from plan files alone; a role adds live change-set and pricing lookups.",
   "icon": "layers",
   "aws_access": "optional",
-  "role_template": "infra/cloudformation/personas/deployment-plan-analysis-role.yml",
+  "role_template": "infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml",
   "inputs": [
     "plan-files",
     "cost-threshold-usd"
