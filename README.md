@@ -212,7 +212,7 @@ examples/workflows/         workflows to copy into target repositories
 2. If it uses AWS, add `infra/cloudformation/<name>/<name>-role.yml`
    with only the read APIs that match `aws-allowed-tools.txt`.
 3. Run `python3 scripts/generate_actions.py` to create `.github/actions/<name>/action.yml`.
-   CI fails if a generated action is out of date.
+   Run `python3 scripts/generate_actions.py --check` to confirm none are out of date.
 
 Prompts can use `{{CONTEXT_DIR}}`, `{{AWS_PROFILE}}`, `{{TARGET_REGION}}`,
 `{{TARGET_ENVIRONMENT}}`, `{{REPO}}`, `{{PR_NUMBER}}`, `{{PERSONA}}`,

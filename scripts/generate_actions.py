@@ -5,7 +5,7 @@ Each persona is its own GitHub Action (uses: platformr/github-actions-agents/.gi
 but the step wiring lives in scripts/action.template.yml so the actions never drift.
 
   python3 scripts/generate_actions.py           # write all action.yml files
-  python3 scripts/generate_actions.py --check   # fail if any are out of date (CI)
+  python3 scripts/generate_actions.py --check   # fail if any are out of date
 """
 from __future__ import annotations
 
