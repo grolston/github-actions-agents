@@ -1,0 +1,19 @@
+# Deny rules win over allow rules. These apply to every persona.
+Edit
+Write
+MultiEdit
+NotebookEdit
+WebFetch
+WebSearch
+Task
+# Block credential exfiltration through the AWS CLI: a custom endpoint would
+# receive signed requests (including the session token), --debug prints them.
+Bash(*--endpoint-url*)
+Bash(*--debug*)
+Bash(*--ca-bundle*)
+Bash(*--no-verify-ssl*)
+Bash(aws configure *)
+# Credential and process files on the runner.
+Read(~/.aws/**)
+Read(//home/runner/.aws/**)
+Read(//proc/**)

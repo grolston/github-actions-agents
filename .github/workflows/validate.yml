@@ -1,0 +1,64 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: cfn-lint
+        run: |
+          pipx run cfn-lint infra/cloudformation/*.yml infra/cloudformation/personas/*.yml
+
+      - name: actionlint (example workflows)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color examples/workflows/*.yml .github/workflows/*.yml
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh
+
+      - name: Generated actions are up to date
+        run: python3 scripts/generate_actions.py --check
+
+      - name: Persona contract + prompt build
+        run: |
+          set -euo pipefail
+          for meta in */persona.json; do
+            dir=$(dirname "$meta"); p=$dir
+            for f in action.yml persona.json prompt.md schema.json; do
+              test -f "$dir/$f" || { echo "::error::$p is missing $f"; exit 1; }
+            done
+            access=$(jq -r .aws_access "$meta")
+            if [[ "$access" != none ]]; then
+              tmpl=$(jq -r .role_template "$meta")
+              test -f "$tmpl" || { echo "::error::$p role template $tmpl not found"; exit 1; }
+            fi
+            for aws in true false; do
+              ctx=$(mktemp -d); out=$(mktemp)
+              PERSONA_DIR=$PWD/$dir CONTEXT_DIR=$ctx AWS_PROFILE_NAME=pr-agent-$p USE_AWS=$aws \
+                PERSONA=$p TARGET_REGION=us-east-1 MODEL=test MAX_TURNS=5 \
+                REPO=o/r PR_NUMBER=1 GITHUB_OUTPUT=$out python3 scripts/prepare.py > /dev/null
+              ! grep -n '{{[A-Z0-9_]*}}' "$ctx/prompt.md"
+            done
+            echo "ok $p ($access)"
+          done
+
+      - name: Report renderer
+        run: |
+          set -euo pipefail
+          ctx=$(mktemp -d); out=$(mktemp)
+          PERSONA_DIR=$PWD/quota-preflight CONTEXT_DIR=$ctx PERSONA=quota-preflight AGENT_OUTCOME=failure \
+            GITHUB_OUTPUT=$out python3 scripts/render_report.py
+          grep -q 'verdict=error' "$out"
+          grep -q 'should-fail=true' "$out"

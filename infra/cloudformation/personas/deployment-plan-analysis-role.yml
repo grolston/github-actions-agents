@@ -1,0 +1,186 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  OPTIONAL read-only role for the deployment-plan-analysis PR agent. The
+  persona works from plan files alone; deploy this only if it should also
+  read live CloudFormation change sets and the AWS Pricing API.
+
+# Deploy in every account/region pair this persona must inspect. The agent
+# runs Claude through the separate Bedrock role (../bedrock-invoke-role.yml);
+# this role has NO Bedrock access and only the read-only APIs listed below.
+
+Parameters:
+
+  GitHubOrganization:
+    Type: String
+    Description: GitHub organization or user that owns the repositories (case sensitive).
+    AllowedPattern: "^[A-Za-z0-9-]+$"
+
+  GitHubOrganizationId:
+    Type: String
+    Description: Numeric org ID for the immutable-ID sub claim (gh api /orgs/<org> --jq .id). * matches any.
+    Default: "*"
+
+  RepositoryName:
+    Type: String
+    Description: Repository allowed to assume the role. * for every repository in the organization.
+    Default: "*"
+
+  RepositoryId:
+    Type: String
+    Description: Numeric repository ID for the immutable-ID sub claim (gh api /repos/<org>/<repo> --jq .id). * matches any.
+    Default: "*"
+
+  TrustMode:
+    Type: String
+    Description: >-
+      pull_request = jobs triggered by pull_request events with no
+      `environment:`. environment = only jobs running in GitHubEnvironmentName
+      (role ARN stored as an environment secret, gated by environment
+      protection rules). both = either.
+    Default: pull_request
+    AllowedValues: [pull_request, environment, both]
+
+  GitHubEnvironmentName:
+    Type: String
+    Description: GitHub environment trusted when TrustMode is environment or both.
+    Default: pr-agents
+
+  WorkflowFile:
+    Type: String
+    Description: >-
+      Workflow file name allowed to assume the role (job_workflow_ref claim),
+      e.g. pr-agents.yml. * allows any workflow in the trusted repositories.
+    Default: "*"
+
+  OidcProviderArn:
+    Type: String
+    Description: GitHub OIDC provider ARN. Empty = this account's token.actions.githubusercontent.com provider.
+    Default: ""
+
+  RoleName:
+    Type: String
+    Default: github-pr-agent-deployment-plan-analysis
+    AllowedPattern: "^[A-Za-z0-9+=,.@_-]{1,64}$"
+
+  MaxSessionDuration:
+    Type: Number
+    Default: 3600
+    MinValue: 900
+    MaxValue: 43200
+
+  StackNamePattern:
+    Type: String
+    Description: >-
+      CloudFormation stack names whose change sets the agent may read
+      (wildcards allowed), e.g. myapp-*. Use * for all stacks.
+    Default: "*"
+
+Conditions:
+  UseDefaultProviderArn: !Equals ["", !Ref OidcProviderArn]
+  TrustBoth: !Equals [both, !Ref TrustMode]
+  TrustPullRequestOnly: !Equals [pull_request, !Ref TrustMode]
+
+Resources:
+
+  PersonaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Read CloudFormation change sets for allowed stacks and AWS pricing.
+      MaxSessionDuration: !Ref MaxSessionDuration
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: GitHubActionsOidc
+            Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal:
+              Federated: !If
+                - UseDefaultProviderArn
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+                - !Ref OidcProviderArn
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:job_workflow_ref: !Sub ${GitHubOrganization}/${RepositoryName}/.github/workflows/${WorkflowFile}@*
+                token.actions.githubusercontent.com:sub: !If
+                  - TrustBoth
+                  - - !Sub repo:${GitHubOrganization}/${RepositoryName}:pull_request
+                    - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:pull_request
+                    - !Sub repo:${GitHubOrganization}/${RepositoryName}:environment:${GitHubEnvironmentName}
+                    - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:environment:${GitHubEnvironmentName}
+                  - !If
+                    - TrustPullRequestOnly
+                    - - !Sub repo:${GitHubOrganization}/${RepositoryName}:pull_request
+                      - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:pull_request
+                    - - !Sub repo:${GitHubOrganization}/${RepositoryName}:environment:${GitHubEnvironmentName}
+                      - !Sub repo:${GitHubOrganization}@${GitHubOrganizationId}/${RepositoryName}@${RepositoryId}:environment:${GitHubEnvironmentName}
+      Policies:
+        - PolicyName: deployment-plan-analysis-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ChangeSetsForAllowedStacks
+                Effect: Allow
+                Action:
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ListChangeSets
+                  - cloudformation:ListStackResources
+                Resource: !Sub arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/${StackNamePattern}/*
+              - Sid: PricingLookups
+                # Pricing API has no resource-level permissions.
+                Effect: Allow
+                Action:
+                  - pricing:DescribeServices
+                  - pricing:GetAttributeValues
+                  - pricing:GetProducts
+                Resource: "*"
+        - PolicyName: deny-data-reads
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Guardrail: even if a broader policy is attached later, this
+              # role can never read secret values or data contents.
+              - Sid: DenySecretAndDataReads
+                Effect: Deny
+                Action:
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:BatchGetSecretValue
+                  - kms:Decrypt
+                  - kms:GenerateDataKey*
+                  - ssm:GetParameterHistory
+                  - ec2:GetPasswordData
+                  - ec2:DescribeInstanceAttribute
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - s3:GetObject*
+                  - dynamodb:GetItem
+                  - dynamodb:BatchGetItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                  - sqs:ReceiveMessage
+                  - logs:GetLogEvents
+                  - logs:FilterLogEvents
+                  - logs:StartQuery
+                  - bedrock:InvokeModel*
+                Resource: "*"
+              - Sid: DenyCustomerParameterValues
+                Effect: Deny
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                NotResource:
+                  # AWS-published public parameters (e.g. latest AMI IDs) stay readable.
+                  - !Sub arn:${AWS::Partition}:ssm:*::parameter/aws/service/*
+      Tags:
+        - Key: pr-agent-role
+          Value: deployment-plan-analysis
+
+Outputs:
+  RoleArn:
+    Description: Store as the AWS_PR_AGENT_PLAN_ROLE_ARN secret (repository or environment).
+    Value: !GetAtt PersonaRole.Arn

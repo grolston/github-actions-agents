@@ -1,0 +1,57 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  GitHub Actions OIDC identity provider. Deploy ONCE per AWS account. An
+  account can hold only one provider for token.actions.githubusercontent.com,
+  so skip this stack if the account already has one and pass its ARN to
+  pr-agent-roles.yml instead.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: OIDC provider }
+        Parameters: [AdditionalAudiences]
+
+Parameters:
+
+  AdditionalAudiences:
+    Type: CommaDelimitedList
+    Description: >-
+      Optional extra audiences (client IDs) beyond sts.amazonaws.com. Leave
+      empty unless a workflow sets a custom `audience` on
+      aws-actions/configure-aws-credentials.
+    Default: ""
+
+Conditions:
+
+  HasAdditionalAudiences: !Not [!Equals ["", !Join ["", !Ref AdditionalAudiences]]]
+
+Resources:
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: !If
+        - HasAdditionalAudiences
+        - !Split [",", !Join [",", [sts.amazonaws.com, !Join [",", !Ref AdditionalAudiences]]]]
+        - [sts.amazonaws.com]
+      # IAM validates GitHub's certificate against its own trusted CA library,
+      # so the thumbprints are no longer used for verification. They are kept
+      # because older CloudFormation/IAM API consumers still expect them.
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Name
+          Value: github-actions-oidc
+        - Key: ManagedBy
+          Value: !Ref AWS::StackName
+
+Outputs:
+
+  GitHubOidcProviderArn:
+    Description: ARN of the GitHub Actions OIDC provider. Pass to pr-agent-roles.yml.
+    Value: !Ref GitHubOidcProvider
+    Export:
+      Name: !Sub ${AWS::StackName}-ProviderArn

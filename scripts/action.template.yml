@@ -1,0 +1,295 @@
+# GENERATED FILE: do not edit by hand.
+# Source: scripts/action.template.yml + {{PERSONA}}/persona.json
+# Regenerate: python3 scripts/generate_actions.py
+name: "PR Agent: {{TITLE}}"
+description: >-
+  {{DESCRIPTION}}
+author: platformr
+branding:
+  icon: {{ICON}}
+  color: orange
+
+inputs:
+  # --- AWS / Bedrock ---------------------------------------------------------
+  aws-region:
+    description: Region the persona inspects (quotas, SSM parameters, IDs, change sets).
+    required: true
+  bedrock-role-arn:
+    description: >-
+      Role assumed via OIDC to invoke Claude on Bedrock. Usually passed from a
+      repository or environment secret.
+    required: true
+#@BEGIN aws
+  target-role-arn:
+    description: >-
+      {{TARGET_ROLE_DESCRIPTION}}
+    required: {{TARGET_ROLE_REQUIRED}}
+    default: ""
+#@END aws
+  bedrock-region:
+    description: Region used for Bedrock calls. Defaults to aws-region.
+    required: false
+    default: ""
+  target-environment:
+    description: >-
+      Label for the environment being checked (dev, stage, prod...). Shown in
+      the report and used to keep one PR comment per persona per environment.
+    required: false
+    default: ""
+  model:
+    description: Bedrock model or inference profile ID.
+    required: false
+    default: us.anthropic.claude-opus-5-5
+  max-turns:
+    description: Maximum agent turns before giving up (reported as verdict "error").
+    required: false
+    default: "60"
+
+  # --- Context -------------------------------------------------------------
+  pr-number:
+    description: Pull request number. Defaults to the triggering pull_request event.
+    required: false
+    default: ""
+  repo-guidance-path:
+    description: >-
+      Repository guidance file read from the PR's BASE branch (never from the
+      PR head, so a PR cannot rewrite the rules it is judged by).
+    required: false
+    default: AGENTS.md
+  org-rules:
+    description: >-
+      Organization standards text passed to the persona. Source it from a
+      trusted place (org variable, another repo), not from the PR.
+    required: false
+    default: ""
+  org-rules-version:
+    description: Version label for org-rules, echoed in the report.
+    required: false
+    default: "unversioned"
+#@BEGIN input:plan-files
+  plan-files:
+    description: >-
+      Newline-separated globs, relative to the
+      workspace, of CloudFormation change set JSON (describe-change-set
+      output) or Terraform `show -json` plan files. Name files
+      <environment>.json or put them in <environment>/ directories so the
+      agent can map them to environments.
+    required: true
+#@END input:plan-files
+#@BEGIN input:cost-threshold-usd
+  cost-threshold-usd:
+    description: Monthly cost increase that raises an Important finding.
+    required: false
+    default: "500"
+#@END input:cost-threshold-usd
+  extra-instructions:
+    description: Additional trusted instructions appended to the persona prompt.
+    required: false
+    default: ""
+  extra-allowed-tools:
+    description: >-
+      Comma-separated extra Claude Code tool permissions, e.g.
+      "Bash(aws ec2 describe-hosts *)". Keep them read-only.
+    required: false
+    default: ""
+
+  # --- Reporting ----------------------------------------------------------
+  github-token:
+    description: Token used to read the PR and post the report comment.
+    required: false
+    default: ${{ github.token }}
+  comment:
+    description: >-
+      Post the validated report as a PR comment (one per persona and
+      target-environment, updated in place on re-runs).
+    required: false
+    default: "true"
+  inline-comments:
+    description: >-
+      Let the agent leave inline review comments on specific changed lines
+      (via claude-code-action's inline comment tool). Requires
+      pull-requests: write.
+    required: false
+    default: "true"
+  fail-on:
+    description: >-
+      Fail the step when a finding at or above this severity exists:
+      critical, important, suggestion, or never.
+    required: false
+    default: critical
+  fail-on-error:
+    description: Fail the step when the agent cannot produce a valid report.
+    required: false
+    default: "true"
+  allowed-bots:
+    description: Passed to claude-code-action (e.g. "dependabot[bot]") to allow bot-authored PRs.
+    required: false
+    default: ""
+
+outputs:
+  verdict:
+    description: pass | findings | error
+    value: ${{ steps.report.outputs.verdict }}
+  highest-severity:
+    description: critical | important | suggestion | none
+    value: ${{ steps.report.outputs.highest-severity }}
+  findings-count:
+    description: Number of findings.
+    value: ${{ steps.report.outputs.findings-count }}
+  report-json:
+    description: Path to the validated JSON report.
+    value: ${{ steps.report.outputs.report-json }}
+  report-markdown:
+    description: Path to the rendered markdown report.
+    value: ${{ steps.report.outputs.report-markdown }}
+
+runs:
+  using: composite
+  steps:
+    - name: Gather pull request context
+      id: context
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PERSONA_DIR: ${{ github.action_path }}
+        PERSONA: {{PERSONA}}
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+#@BEGIN aws
+        TARGET_ROLE_ARN: ${{ inputs.target-role-arn }}
+#@END aws
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
+        REPO_GUIDANCE_PATH: ${{ inputs.repo-guidance-path }}
+        ORG_RULES: ${{ inputs.org-rules }}
+#@BEGIN input:plan-files
+        PLAN_FILES: ${{ inputs.plan-files }}
+#@END input:plan-files
+      run: bash "$PERSONA_DIR/../scripts/gather-context.sh"
+
+#@BEGIN aws
+    # Read-only persona role -> named profile (never exported as env vars).
+    - name: Assume persona role (target account)
+      if: steps.context.outputs.use-aws == 'true'
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.aws-region }}
+        role-to-assume: ${{ inputs.target-role-arn }}
+        role-session-name: pr-agent-{{PERSONA}}-${{ github.run_id }}
+        aws-profile: ${{ steps.context.outputs.profile }}
+        overwrite-aws-profile: "true"
+        output-env-credentials: "false"
+        mask-aws-account-id: "false"
+
+#@END aws
+    # Bedrock role -> environment credentials used by Claude Code itself.
+    - name: Assume Bedrock role
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.bedrock-region || inputs.aws-region }}
+        role-to-assume: ${{ inputs.bedrock-role-arn }}
+        role-session-name: pr-agent-bedrock-${{ github.run_id }}
+        unset-current-credentials: "true"
+
+    - name: Build persona prompt and tool permissions
+      id: prepare
+      shell: bash
+      env:
+        PERSONA_DIR: ${{ github.action_path }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        AWS_PROFILE_NAME: ${{ steps.context.outputs.profile }}
+        USE_AWS: ${{ steps.context.outputs.use-aws }}
+        INLINE_COMMENTS: ${{ inputs.inline-comments }}
+        PERSONA: {{PERSONA}}
+        TARGET_REGION: ${{ inputs.aws-region }}
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        MODEL: ${{ inputs.model }}
+        MAX_TURNS: ${{ inputs.max-turns }}
+        ORG_RULES_VERSION: ${{ inputs.org-rules-version }}
+#@BEGIN input:cost-threshold-usd
+        COST_THRESHOLD_USD: ${{ inputs.cost-threshold-usd }}
+#@END input:cost-threshold-usd
+        EXTRA_INSTRUCTIONS: ${{ inputs.extra-instructions }}
+        EXTRA_ALLOWED_TOOLS: ${{ inputs.extra-allowed-tools }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+      run: python3 "$PERSONA_DIR/../scripts/prepare.py"
+
+    - name: Run {{PERSONA}} agent
+      id: agent
+      continue-on-error: true
+      uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1
+      env:
+        AWS_REGION: ${{ inputs.bedrock-region || inputs.aws-region }}
+      with:
+        use_bedrock: "true"
+        github_token: ${{ inputs.github-token }}
+        allowed_bots: ${{ inputs.allowed-bots }}
+        prompt: ${{ steps.prepare.outputs.prompt }}
+        claude_args: ${{ steps.prepare.outputs.claude-args }}
+
+    - name: Validate and render report
+      id: report
+      if: always() && steps.prepare.outcome == 'success'
+      shell: bash
+      env:
+        PERSONA_DIR: ${{ github.action_path }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        PERSONA: {{PERSONA}}
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        TARGET_REGION: ${{ inputs.aws-region }}
+        AGENT_OUTCOME: ${{ steps.agent.outcome }}
+        EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        STRUCTURED_OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: python3 "$PERSONA_DIR/../scripts/render_report.py"
+
+    - name: Post report comment
+      if: always() && inputs.comment == 'true' && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PERSONA_DIR: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+        MARKER: ${{ steps.report.outputs.marker }}
+        BODY_FILE: ${{ steps.report.outputs.report-markdown }}
+      run: bash "$PERSONA_DIR/../scripts/upsert-comment.sh"
+
+#@BEGIN aws
+    - name: Remove persona credentials
+      if: always()
+      shell: bash
+      env:
+        PROFILE: ${{ steps.context.outputs.profile }}
+        USE_AWS: ${{ steps.context.outputs.use-aws }}
+      run: |
+        [ "$USE_AWS" = "true" ] && [ -n "$PROFILE" ] || exit 0
+        for f in "$HOME/.aws/credentials" "$HOME/.aws/config"; do
+          [ -f "$f" ] || continue
+          python3 - "$f" "$PROFILE" <<'PY'
+        import configparser, sys
+        path, profile = sys.argv[1], sys.argv[2]
+        cp = configparser.RawConfigParser()
+        cp.read(path)
+        for section in (profile, f"profile {profile}"):
+            cp.remove_section(section)
+        with open(path, "w") as fh:
+            cp.write(fh)
+        PY
+        done
+
+#@END aws
+    - name: Enforce verdict
+      if: always() && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        SHOULD_FAIL: ${{ steps.report.outputs.should-fail }}
+        REASON: ${{ steps.report.outputs.fail-reason }}
+        PERSONA: {{PERSONA}}
+      run: |
+        if [ "$SHOULD_FAIL" = "true" ]; then
+          echo "::error title=PR agent ($PERSONA)::$REASON"
+          exit 1
+        fi

@@ -1,0 +1,8 @@
+{
+  "title": "Quota Preflight",
+  "description": "Finds resources in the change that consume AWS service quotas and checks current usage and headroom in the target account.",
+  "icon": "activity",
+  "aws_access": "required",
+  "role_template": "infra/cloudformation/personas/quota-preflight-role.yml",
+  "inputs": []
+}

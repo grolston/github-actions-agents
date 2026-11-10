@@ -1,0 +1,2 @@
+# Granted to every persona that has AWS access (persona role assumed).
+Bash(aws sts get-caller-identity *)
