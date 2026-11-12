@@ -21,8 +21,8 @@ pull_request ─► job (one per persona, only that persona's secrets)
                  ├─ OIDC ─► persona role ─► named AWS profile        (skipped if the persona needs no AWS)
                  ├─ OIDC ─► Bedrock role  ─► env credentials for Claude
                  ├─ claude-code-action: persona prompt + allowlisted read-only tools + JSON schema output
-                 │      └─ optional inline review comments on changed lines
                  ├─ validate + sanitize the JSON report ─► job summary + one PR comment (updated in place)
+                 ├─ one resolvable review thread per finding (deduplicated; auto-resolved when fixed)
                  └─ fail the check if severity ≥ fail-on
 ```
 
@@ -121,7 +121,7 @@ jobs:
     permissions:
       contents: read
       id-token: write        # OIDC
-      pull-requests: write   # PR comment + inline comments
+      pull-requests: write   # report comment + review threads
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
@@ -152,7 +152,8 @@ the source of truth):
 | `model` | `us.anthropic.claude-opus-5-5` | Bedrock model / inference profile ID. |
 | `max-turns` | `60` | Agent turn limit. |
 | `comment` | `true` | Post/update the report as a PR comment. |
-| `inline-comments` | `true` | Let the agent leave inline comments (max 10, critical/important only) on changed lines. |
+| `review-threads` | `true` | Open one resolvable review thread per finding at or above `thread-on` (see [Review threads](#review-threads)). |
+| `thread-on` | `important` | Lowest severity that opens a thread: `critical`, `important`, or `suggestion`. |
 | `fail-on` | `critical` | Fail the check at `critical`, `important`, `suggestion`, or `never`. |
 | `fail-on-error` | `true` | Fail when the agent cannot produce a valid report. |
 | `repo-guidance-path` | `AGENTS.md` | Read from the PR's base branch. |
@@ -168,7 +169,31 @@ relative globs of change set / `terraform show -json` files) and
 `cost-threshold-usd` (default `500`).
 
 Outputs: `verdict` (`pass`/`findings`/`error`), `highest-severity`,
-`findings-count`, `report-json`, `report-markdown`.
+`findings-count`, `report-json`, `report-markdown`, `open-threads`.
+
+## Review threads
+
+Every agent turns its findings into PR conversations that need resolution.
+The action posts them itself from the validated report, so it does not
+depend on the model choosing to comment:
+
+- **One thread per finding** at or above `thread-on`, on the finding's
+  changed line. If that line isn't in the diff, the thread goes on the
+  file; if the file isn't in the PR (an account quota, a missing SSM
+  parameter), it goes on the first changed file and names the real
+  location.
+- **No duplicates.** Each thread carries a hidden marker with the persona,
+  environment, and a fingerprint of the finding (category + resource +
+  file), so re-runs on new pushes reuse the existing thread.
+- **Auto-resolve.** When a later run no longer reports a finding, the agent
+  replies and resolves its thread. If it comes back, the agent reopens it.
+  A thread a person resolved stays resolved (that is how a finding is
+  accepted). A failed run (`verdict: error`) never resolves anything.
+- At most 25 new threads per run per persona.
+
+To make merges wait on these conversations, enable **Require conversation
+resolution before merging** in the branch protection rule or ruleset for the
+target branch. The action can't turn that on for you.
 
 ## Repository layout
 

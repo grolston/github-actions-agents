@@ -9,6 +9,13 @@ JSON schema. Set `persona` to `{{PERSONA}}`.
 - `findings[].id`: short stable ID, e.g. `QP-001`.
 - `findings[].severity`: `critical`, `important`, or `suggestion`, per your
   persona's severity rules.
+- `findings[].file`: `path:line` of the changed line that introduces the
+  issue (new-file line numbers, as in the diff). Each finding becomes a
+  review conversation on that line that someone must resolve, so point at
+  the most specific line in this PR's diff. If the issue is not on a changed
+  line, give the file that relates to it; omit `file` only when no file
+  applies. Keep `category` and `resource` stable between runs for the same
+  issue: they identify the conversation.
 - `summary_markdown`: at most ~15 lines of GitHub markdown for a human
   reviewer: what you checked, what matters, and what to do next. No
   headings above level 4, no HTML, no @mentions.

@@ -86,13 +86,22 @@ inputs:
       target-environment, updated in place on re-runs).
     required: false
     default: "true"
-  inline-comments:
+  review-threads:
     description: >-
-      Let the agent leave inline review comments on specific changed lines
-      (via claude-code-action's inline comment tool). Requires
-      pull-requests: write.
+      Open one resolvable review thread per finding at or above thread-on,
+      anchored on the finding's changed line (else its file, else the first
+      changed file). Re-runs never duplicate threads; threads for findings no
+      longer reported are resolved automatically. Pair with the branch rule
+      "Require conversation resolution before merging" to block merges until
+      every thread is resolved. Requires pull-requests: write.
     required: false
     default: "true"
+  thread-on:
+    description: >-
+      Lowest severity that opens a review thread (critical, important, or
+      suggestion).
+    required: false
+    default: important
   fail-on:
     description: >-
       Fail the step when a finding at or above this severity exists:
@@ -124,6 +133,9 @@ outputs:
   report-markdown:
     description: Path to the rendered markdown report.
     value: ${{ steps.report.outputs.report-markdown }}
+  open-threads:
+    description: Unresolved review threads this persona owns on the PR after the run.
+    value: ${{ steps.threads.outputs.open-threads }}
 
 runs:
   using: composite
@@ -173,7 +185,6 @@ runs:
         CONTEXT_DIR: ${{ steps.context.outputs.dir }}
         AWS_PROFILE_NAME: ${{ steps.context.outputs.profile }}
         USE_AWS: ${{ steps.context.outputs.use-aws }}
-        INLINE_COMMENTS: ${{ inputs.inline-comments }}
         PERSONA: prerequisite-validator
         TARGET_REGION: ${{ inputs.aws-region }}
         TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
@@ -228,6 +239,23 @@ runs:
         MARKER: ${{ steps.report.outputs.marker }}
         BODY_FILE: ${{ steps.report.outputs.report-markdown }}
       run: bash "$PERSONA_DIR/../_shared/scripts/upsert-comment.sh"
+
+    - name: Sync review threads
+      id: threads
+      if: always() && inputs.review-threads == 'true' && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        PERSONA_DIR: ${{ github.action_path }}
+        PERSONA: prerequisite-validator
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+        HEAD_SHA: ${{ steps.context.outputs.head-sha }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        REPORT_JSON: ${{ steps.report.outputs.report-json }}
+        THREAD_ON: ${{ inputs.thread-on }}
+      run: python3 "$PERSONA_DIR/../_shared/scripts/sync_threads.py"
 
     - name: Remove persona credentials
       if: always()

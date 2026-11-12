@@ -80,15 +80,12 @@ def main() -> None:
     }
 
     use_aws = env("USE_AWS") == "true"
-    inline = env("INLINE_COMMENTS", "true") == "true"
 
     parts = [
         render((SHARED / "preamble.md").read_text(), values),
         render((SHARED / ("aws-access.md" if use_aws else "no-aws-access.md")).read_text(), values),
         render((persona_dir / "prompt.md").read_text(), values),
     ]
-    if inline:
-        parts.append(render((SHARED / "inline-comments.md").read_text(), values))
     extra = env("EXTRA_INSTRUCTIONS")
     if extra:
         # Inserted verbatim (not templated): these come from the workflow author.
@@ -108,8 +105,6 @@ def main() -> None:
         # AWS CLI rules are granted only when a persona role was assumed.
         allowed += read_list(SHARED / "aws-allowed-tools.txt") + read_list(persona_dir / "aws-allowed-tools.txt")
     allowed += read_list(persona_dir / "allowed-tools.txt")
-    if inline:
-        allowed.append("mcp__github_inline_comment__create_inline_comment")
     allowed += [t.strip() for t in env("EXTRA_ALLOWED_TOOLS").split(",") if t.strip()]
     disallowed = read_list(SHARED / "disallowed-tools.txt")
     for tool in allowed + disallowed:
@@ -134,7 +129,7 @@ def main() -> None:
     write_output("prompt", prompt)
     write_output("claude-args", claude_args)
 
-    print(f"Persona: {persona} (AWS access: {use_aws}, inline comments: {inline})")
+    print(f"Persona: {persona} (AWS access: {use_aws})")
     print(f"Prompt: {len(prompt)} chars (saved to {context_dir}/prompt.md)")
     print("Allowed tools:\n  " + "\n  ".join(allowed))
     print("Denied tools:\n  " + "\n  ".join(disallowed))
