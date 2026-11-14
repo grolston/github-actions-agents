@@ -24,6 +24,7 @@ Bash(env*)
 Bash(printenv*)
 Bash(*AWS_SECRET_ACCESS_KEY*)
 Bash(*AWS_SESSION_TOKEN*)
+Bash(*/proc/*)
 # Credential and process files on the runner.
 Read(~/.aws/**)
 Read(//home/runner/.aws/**)

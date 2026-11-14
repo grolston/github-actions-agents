@@ -7,13 +7,17 @@ model output). For every finding at or above THREAD_ON severity:
 - an open thread already exists for it   -> left alone (no duplicate)
 - it was resolved by a person            -> left resolved (human decision)
 - it was auto-resolved earlier, reappears -> reopened with a reply
+  (a thread counts as auto-resolved unless GitHub names a different
+  account as the resolver)
 - no thread yet                          -> new review comment, anchored on
   the finding's changed line, else on its file, else on the first file the
   PR changes (so every finding is a conversation that needs resolution)
 
 Open threads owned by this persona/environment whose finding is no longer
 reported are replied to and resolved. Nothing is resolved when the report
-is an error, so a failed run never clears real findings.
+is an error, so a failed run never clears real findings. If the token is
+not allowed to resolve or reopen a thread, the run warns and carries on
+rather than failing the check.
 
 Threads are identified by a hidden marker holding a fingerprint of the
 finding (category + resource + file path), not its ID, because IDs are
@@ -138,6 +142,27 @@ def existing_threads(gh: GitHub, repo: str, number: int, owner_key: str) -> dict
         if not page["pageInfo"]["hasNextPage"]:
             return threads
         after = page["pageInfo"]["endCursor"]
+
+
+def _login(value) -> str:
+    return str(value or "").removesuffix("[bot]").lower()
+
+
+def auto_resolved(thread: dict) -> bool:
+    """True when the thread was resolved by this agent rather than by a person.
+
+    GitHub does not report a bot resolver consistently (login with or without
+    the "[bot]" suffix, or no resolver at all), so a resolved thread is ours
+    unless a different account is named as the resolver.
+    """
+    if not thread["resolved"]:
+        return False
+    resolver = _login(thread["resolved_by"])
+    return not resolver or resolver == _login(thread["author"])
+
+
+def one_line(exc: Exception) -> str:
+    return " ".join(str(exc).split())[:300]
 
 
 # ---------------------------------------------------------------------------
@@ -269,12 +294,17 @@ def main() -> None:
         wanted.setdefault(fingerprint(f, path), (f, path, line))
 
     opened = reopened = resolved = skipped = 0
+    denied: list[str] = []  # resolve/reopen calls the token was not allowed to make
     for fp, (finding, path, line) in wanted.items():
         thread = threads.get(fp)
         if thread:
-            if thread["resolved"] and thread["resolved_by"] == thread["author"]:
+            if auto_resolved(thread):
                 # We auto-resolved it earlier and it is back: reopen.
-                gh.graphql(UNRESOLVE, {"id": thread["id"]})
+                try:
+                    gh.graphql(UNRESOLVE, {"id": thread["id"]})
+                except RuntimeError as exc:
+                    denied.append(f"reopen: {one_line(exc)}")
+                    continue
                 gh.rest("POST", f"repos/{repo}/pulls/{number}/comments/{thread['comment_id']}/replies",
                         {"body": f"Detected again at {head_sha[:7]}; reopening."})
                 reopened += 1
@@ -313,18 +343,29 @@ def main() -> None:
             gh.rest("POST", f"repos/{repo}/pulls/{number}/comments", comment)
         opened += 1
 
+    stale_open = 0
     for fp, thread in threads.items():
         if fp in wanted or thread["resolved"]:
             continue
+        # Resolve first and reply only on success, so a token that cannot
+        # resolve threads does not add a reply on every run.
+        try:
+            gh.graphql(RESOLVE, {"id": thread["id"]})
+        except RuntimeError as exc:
+            denied.append(f"resolve: {one_line(exc)}")
+            stale_open += 1
+            continue
         gh.rest("POST", f"repos/{repo}/pulls/{number}/comments/{thread['comment_id']}/replies",
-                {"body": f"No longer reported at {threshold_name} or above as of {head_sha[:7]}; resolving."})
-        gh.graphql(RESOLVE, {"id": thread["id"]})
+                {"body": f"No longer reported at {threshold_name} or above as of {head_sha[:7]}; resolved."})
         resolved += 1
 
     if skipped:
         print(f"::warning::{skipped} finding(s) did not get a review thread (limit {MAX_NEW_THREADS} new per run).")
-    still_open = sum(1 for fp, t in threads.items() if fp in wanted and (not t["resolved"] or
-                     t["resolved_by"] == t["author"])) + opened
+    if denied:
+        print(f"::warning::{len(denied)} review thread(s) could not be resolved or reopened with this token "
+              f"and need a person to do it. First error: {denied[0]}")
+    still_open = (sum(1 for fp, t in threads.items() if fp in wanted and not t["resolved"])
+                  + opened + reopened + stale_open)
     print(f"threads: opened={opened} reopened={reopened} resolved={resolved} open={still_open}")
     write_output("open-threads", str(still_open))
 

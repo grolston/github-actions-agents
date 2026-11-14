@@ -278,4 +278,4 @@ workflow's `paths:` filter), then check:
 | Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the persona role. |
 | `Resource not accessible by integration` when commenting | The job is missing `pull-requests: write`, or the PR is from a fork or Dependabot (their token is read-only). |
 | Verdict `error`, "agent produced no structured output" | The agent ran out of turns or hit an error; see the agent step's log. Raise `max-turns` if it was still working. |
-| Threads are created but never auto-resolve | The token can't resolve review threads. Use a GitHub App token (step 6). |
+| Threads are created but never auto-resolve, and **Sync review threads** warns that threads "could not be resolved or reopened" | The token isn't allowed to resolve review threads; the warning quotes GitHub's error. Resolve them by hand, or pass a `github-token` that is allowed to. |

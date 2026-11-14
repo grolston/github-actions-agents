@@ -16,7 +16,7 @@ Target environment: `{{TARGET_ENVIRONMENT}}`, region `{{TARGET_REGION}}`.
 | Unified diff | `{{CONTEXT_DIR}}/diff.patch` |
 | Repository guidance (from the base branch) | `{{CONTEXT_DIR}}/repo-guidance.md` (may be empty) |
 | Organization rules, version {{ORG_RULES_VERSION}} | `{{CONTEXT_DIR}}/org-rules.md` (may be empty) |
-| The checked-out repository at the PR head | current working directory |
+| The checked-out repository with the PR's changes (the PR head, or its merge with the base branch) | current working directory |
 
 Start by reading `changed-files.tsv` and `diff.patch`. Read full files from
 the working directory when the diff alone is not enough context (for

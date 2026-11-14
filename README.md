@@ -39,8 +39,10 @@ Least privilege is enforced in three layers:
    `aws` subcommands per persona (`.github/actions/<persona>/aws-allowed-tools.txt`), no
    Edit/Write/Web tools, and deny rules for `--endpoint-url`, `--debug`,
    `aws configure`, `aws bedrock*`, `aws sts assume-role*`, reading
-   `~/.aws`, and reading credentials from the environment. A persona with
-   `"aws_cli": false` gets no AWS CLI permissions at all.
+   `~/.aws` or `/proc`, and the usual ways of printing credentials from the
+   environment. As a backstop, the role's credential values are removed
+   from the report before it is posted. A persona with `"aws_cli": false`
+   gets no AWS CLI permissions at all.
 
 ## Roles and OIDC
 
@@ -174,7 +176,9 @@ depend on the model choosing to comment:
 - **Auto-resolve.** When a later run no longer reports a finding, the agent
   replies and resolves its thread. If it comes back, the agent reopens it.
   A thread a person resolved stays resolved (that is how a finding is
-  accepted). A failed run (`verdict: error`) never resolves anything.
+  accepted). A failed run (`verdict: error`) never resolves anything. If
+  the token isn't allowed to resolve or reopen threads, the run logs a
+  warning and leaves that to a person; it doesn't fail the check.
 - At most 25 new threads per run per persona.
 
 To make merges wait on these conversations, enable **Require conversation
@@ -194,7 +198,7 @@ target branch. The action can't turn that on for you.
   prerequisite-validator/
   deployment-plan-analysis/
   _shared/                  prompt sections + tool allow/deny lists used by every persona
-    scripts/                context gathering, prompt build, report render, comment upsert
+    scripts/                context gathering, prompt build, report render, comment upsert, review thread sync
 infra/cloudformation/
   github-oidc-provider.yml  shared: once per account
   <persona>/<persona>-role.yml   the persona's IAM role: Bedrock + its read-only checks
