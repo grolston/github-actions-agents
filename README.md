@@ -48,70 +48,28 @@ is schema-checked and sanitized (no @mentions, no HTML) before it is posted.
 
 ## Setup
 
-### 1. Deploy the AWS side (`infra/cloudformation/`)
+1. **Share the actions** (private agents repository only): Settings →
+   Actions → General → Access → *Accessible from repositories in the
+   organization*.
+2. **Deploy the AWS roles** from `infra/cloudformation/`: the OIDC provider
+   (once per account), the Bedrock role, and the role for each persona that
+   inspects AWS.
+3. **Store the role ARNs** as repository or environment secrets in the app
+   repository.
+4. **Add a workflow** from [`examples/workflows/`](examples/workflows/) with
+   `id-token: write` and `pull-requests: write`.
 
-| Template | Deploy where | Secret to store |
-|---|---|---|
-| `github-oidc-provider.yml` | Once per account (skip if the provider already exists) | — |
-| `bedrock-invoke-role.yml` | The account where Bedrock runs | `AWS_PR_AGENT_BEDROCK_ROLE_ARN` |
-| `quota-preflight/quota-preflight-role.yml` | Every account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
-| `prerequisite-validator/prerequisite-validator-role.yml` | Every account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
-| `deployment-plan-analysis/deployment-plan-analysis-role.yml` | Optional: only for live change set / pricing lookups | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
+Step-by-step guides:
 
-```bash
-aws cloudformation deploy --stack-name github-oidc-provider \
-  --template-file infra/cloudformation/github-oidc-provider.yml
-```
+- [**Use the agents in your repository**](docs/use-in-your-repo.md):
+  prerequisites, AWS stacks and trust modes, secrets, the workflow,
+  requiring conversation resolution, an optional GitHub App identity, a
+  first-run checklist, and troubleshooting.
+- [**Create your own agents repository**](docs/create-your-own.md): copy
+  this repository under your org, share it, release and tag it, and add
+  personas.
 
-```bash
-aws cloudformation deploy --stack-name github-pr-agent-bedrock \
-  --template-file infra/cloudformation/bedrock-invoke-role.yml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides GitHubOrganization=platformr RepositoryName=my-app TrustMode=both WorkflowFile='pr-agents*.yml'
-```
-
-```bash
-aws cloudformation deploy --stack-name github-pr-agent-quota-preflight \
-  --template-file infra/cloudformation/quota-preflight/quota-preflight-role.yml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides GitHubOrganization=platformr RepositoryName=my-app TrustMode=pull_request
-```
-
-Shared trust parameters (identical in every role template):
-
-| Parameter | Meaning |
-|---|---|
-| `GitHubOrganization` / `RepositoryName` | Who may assume the role (`RepositoryName=*` = whole org). |
-| `GitHubOrganizationId` / `RepositoryId` | Numeric IDs for repos using GitHub's immutable-ID `sub` format. `*` matches any. |
-| `TrustMode` | `pull_request` (repository secrets, job without `environment:`), `environment` (environment secrets; only jobs in `GitHubEnvironmentName`), or `both`. |
-| `WorkflowFile` | Restrict to a workflow file name, e.g. `pr-agents.yml`. |
-| `OidcProviderArn` | Leave empty to use the account's GitHub provider. |
-
-The Bedrock role must trust every way it is used: if some jobs run in an
-environment and others don't, deploy it with `TrustMode=both`.
-
-Enable model access for the Anthropic model in the Bedrock console of the
-Bedrock account/region first.
-
-### 2. Store role ARNs as GitHub secrets
-
-- **Repository secrets** (Settings → Secrets and variables → Actions) for a
-  single account. Deploy roles with `TrustMode=pull_request`.
-- **Environment secrets** (Settings → Environments → `<env>` → Secrets) for
-  one account per environment: same secret names in each environment, and
-  deploy that account's roles with `TrustMode=environment` and
-  `GitHubEnvironmentName=<env>`. Use dedicated environments such as
-  `pr-agents-prod` so deploy approvals don't block PR checks.
-
-### 3. Add workflows to the target repository
-
-Copy what you need into the target repo's `.github/workflows/`. See [`examples/workflows/`](examples/workflows/):
-
-- [`pr-agents.yml`](examples/workflows/pr-agents.yml): quota + prerequisite agents, repository secrets.
-- [`pr-agents-environments.yml`](examples/workflows/pr-agents-environments.yml): matrix over personas × environments, environment secrets.
-- [`deployment-plan-analysis.yml`](examples/workflows/deployment-plan-analysis.yml): build change sets in your own job, analyze them with **no** AWS role for the agent.
-
-Minimal job:
+Minimal job (use `@main` or a commit SHA until a `v1` tag exists):
 
 ```yaml
 jobs:
@@ -215,35 +173,21 @@ infra/cloudformation/
   <persona>/<persona>-role.yml   read-only OIDC role for each persona that needs AWS
 scripts/                    action.template.yml + generate_actions.py (repo tooling)
 examples/workflows/         workflows to copy into target repositories
+docs/                       setup guides
 ```
 
 ## Adding a persona
 
-1. Create `.github/actions/<name>/` with `persona.json`, `prompt.md`, `schema.json` (no
-   single quotes), and `aws-allowed-tools.txt` if it uses AWS.
-   `persona.json`:
-   ```json
-   {
-     "title": "IAM Policy Review",
-     "description": "One sentence shown in the action metadata.",
-     "icon": "shield",
-     "aws_access": "none",
-     "role_template": "",
-     "inputs": []
-   }
-   ```
-   `aws_access` is `required`, `optional`, or `none`. A `none` persona's
-   action has no `target-role-arn` input and needs only the Bedrock role.
-2. If it uses AWS, add `infra/cloudformation/<name>/<name>-role.yml`
-   with only the read APIs that match `aws-allowed-tools.txt`.
-3. Run `python3 scripts/generate_actions.py` to create `.github/actions/<name>/action.yml`.
-   Run `python3 scripts/generate_actions.py --check` to confirm none are out of date.
-
-Prompts can use `{{CONTEXT_DIR}}`, `{{AWS_PROFILE}}`, `{{TARGET_REGION}}`,
-`{{TARGET_ENVIRONMENT}}`, `{{REPO}}`, `{{PR_NUMBER}}`, `{{PERSONA}}`,
-`{{ORG_RULES_VERSION}}`, and `{{COST_THRESHOLD_USD}}`.
+Create `.github/actions/<name>/` with `persona.json`, `prompt.md`,
+`schema.json`, and (if it uses AWS) `aws-allowed-tools.txt` plus
+`infra/cloudformation/<name>/<name>-role.yml`, then run
+`python3 scripts/generate_actions.py`. Details:
+[create-your-own.md → Add or change personas](docs/create-your-own.md#6-add-or-change-personas).
 
 ## Versioning
 
-Consumers pin each persona action to a release tag (`.../.github/actions/quota-preflight@v1`) or a commit SHA; all personas are versioned together with the repository. Tag releases
-from `main` and move the `v1` major tag forward for compatible changes.
+Consumers pin each persona action to a release tag
+(`.../.github/actions/quota-preflight@v1`) or a commit SHA; all personas are
+versioned together with the repository. No tag exists yet, so use `@main` or
+a SHA for now. How to cut releases:
+[create-your-own.md → Release and versioning](docs/create-your-own.md#5-release-and-versioning).

@@ -3,8 +3,8 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   GitHub Actions OIDC identity provider. Deploy ONCE per AWS account. An
   account can hold only one provider for token.actions.githubusercontent.com,
-  so skip this stack if the account already has one and pass its ARN to
-  pr-agent-roles.yml instead.
+  so skip this stack if the account already has one. Role templates use
+  the account's provider by default (OidcProviderArn left empty).
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -51,7 +51,7 @@ Resources:
 Outputs:
 
   GitHubOidcProviderArn:
-    Description: ARN of the GitHub Actions OIDC provider. Pass to pr-agent-roles.yml.
+    Description: ARN of the GitHub Actions OIDC provider. Pass as OidcProviderArn to the role templates if needed.
     Value: !Ref GitHubOidcProvider
     Export:
       Name: !Sub ${AWS::StackName}-ProviderArn
