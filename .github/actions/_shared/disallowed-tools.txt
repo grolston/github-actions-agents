@@ -24,6 +24,8 @@ Bash(env*)
 Bash(printenv*)
 Bash(*AWS_SECRET_ACCESS_KEY*)
 Bash(*AWS_SESSION_TOKEN*)
+# In a Bash rule `*` matches any text, `/` and spaces included (it is not a
+# path glob like the Read rules below), so this covers nested /proc paths.
 Bash(*/proc/*)
 # Credential and process files on the runner.
 Read(~/.aws/**)
