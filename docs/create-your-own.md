@@ -117,7 +117,7 @@ git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
 Move the major tag so `@v1` consumers pick up compatible changes:
 
 ```bash
-git tag -fa v1 -m "v1" v1.0.0 && git push -f origin v1
+git tag -fa v1 -m "v1" "v1.0.0^{}" && git push -f origin v1
 ```
 
 Use a new major tag (`v2`) when you rename or remove an input, change an

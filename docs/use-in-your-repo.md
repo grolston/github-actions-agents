@@ -33,8 +33,9 @@ Actions → General → Policies**, allow `platformr/github-actions-agents/*`,
 and `actions/checkout@*` (plus `actions/upload-artifact@*` and
 `actions/download-artifact@*` for the plan-analysis example).
 
-**Pick a ref.** The examples use `@v1`. Until a `v1` tag exists in the
-agents repository, use `@main` or a commit SHA.
+**Pick a ref.** The examples use `@v1`, which follows the latest compatible
+release. Pin an exact tag (`@v1.0.0`) or a commit SHA if you want updates
+only when you choose.
 
 ## 2. Deploy the AWS roles
 
@@ -174,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@main
+      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
         with:
           aws-region: us-east-1
           target-environment: dev
@@ -239,7 +240,7 @@ App token and pass it as `github-token`.
              private-key: ${{ secrets.PR_AGENT_APP_PRIVATE_KEY }}
          - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
            with: { persist-credentials: false }
-         - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@main
+         - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
            with:
              github-token: ${{ steps.app-token.outputs.token }}
              # ...same inputs as before
@@ -272,7 +273,7 @@ workflow's `paths:` filter), then check:
 
 | Symptom | Likely cause |
 |---|---|
-| `Unable to resolve action ... repository not found` | The agents repository is private and not shared with the org (step 1), or the ref (e.g. `@v1`) doesn't exist yet. |
+| `Unable to resolve action ... repository not found` | The agents repository is private and not shared with the org (step 1), or the ref after `@` doesn't exist in the agents repository. |
 | `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, or `id-token: write` is missing. |
 | `Credentials could not be loaded` | The secret is empty in this context: an environment secret read by a job without `environment:`, or the reverse. |
 | Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the persona role. |
