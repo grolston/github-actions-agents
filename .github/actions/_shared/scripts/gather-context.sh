@@ -94,6 +94,10 @@ if [[ -n "${PLAN_FILES:-}" ]]; then
     matches=( $pattern )
     for f in "${matches[@]}"; do
       [[ -f "$f" ]] || continue
+      if [[ -L "$f" ]]; then
+        echo "::warning::Skipping plan file '$f': symbolic links are not followed."
+        continue
+      fi
       if [[ "$f" == /* || "$f" == *..* ]]; then
         echo "::warning::Skipping plan file '$f': use paths relative to the workspace."
         continue

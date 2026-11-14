@@ -103,6 +103,30 @@ def validate(report: dict, persona: str) -> list[str]:
     return problems
 
 
+def redact_credentials(value):
+    """Blank out this job's AWS credential values wherever the report repeats them.
+
+    The persona role's credentials are in the agent's environment. The tool
+    deny rules make them hard to read, but the report is the one thing the
+    agent can publish, so the exact values are removed here as a backstop.
+    """
+    values = [v for v in (os.environ.get(k, "") for k in
+                          ("AWS_SESSION_TOKEN", "AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID")) if len(v) >= 16]
+
+    def walk(item):
+        if isinstance(item, str):
+            for v in values:
+                item = item.replace(v, "[redacted credential]")
+            return item
+        if isinstance(item, list):
+            return [walk(x) for x in item]
+        if isinstance(item, dict):
+            return {k: walk(x) for k, x in item.items()}
+        return item
+
+    return walk(value) if values else value
+
+
 def error_report(persona: str, reason: str) -> dict:
     return {
         "persona": persona,
@@ -264,6 +288,7 @@ def main() -> None:
     if report is None:
         report = error_report(persona, source)
     else:
+        report = redact_credentials(report)
         problems = validate(report, persona)
         if problems:
             note = "Report failed validation: " + "; ".join(problems) + "."

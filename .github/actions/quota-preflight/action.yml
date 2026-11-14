@@ -185,7 +185,7 @@ runs:
     - name: Run quota-preflight agent
       id: agent
       continue-on-error: true
-      uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1
+      uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1.0.271
       env:
         AWS_REGION: ${{ inputs.bedrock-region || inputs.aws-region }}
       with:
