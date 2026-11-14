@@ -1,9 +1,9 @@
 # Copy to .github/workflows/pr-agents.yml in the repository to review.
 # Each persona runs as its own job with only the secrets it needs.
 #
-# Secrets (repository secrets here; see pr-agents-environments.yml for
+# One IAM role per persona (Bedrock + its read-only checks). Secrets
+# (repository secrets here; see pr-agents-environments.yml for
 # environment secrets):
-#   AWS_PR_AGENT_BEDROCK_ROLE_ARN  infra/cloudformation/bedrock-invoke-role.yml
 #   AWS_PR_AGENT_QUOTA_ROLE_ARN    infra/cloudformation/quota-preflight/quota-preflight-role.yml
 #   AWS_PR_AGENT_PREREQ_ROLE_ARN   infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml
 name: PR agents
@@ -45,8 +45,7 @@ jobs:
         with:
           aws-region: us-east-1
           target-environment: dev
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
           fail-on: critical
 
   prerequisite-validator:
@@ -65,7 +64,6 @@ jobs:
         with:
           aws-region: us-east-1
           target-environment: dev
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
           org-rules: ${{ vars.ORG_DEPLOYMENT_RULES }}
           fail-on: critical

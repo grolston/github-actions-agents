@@ -7,19 +7,18 @@ does exactly one job, runs Claude on Amazon Bedrock through
 gets AWS access only through GitHub OIDC (no stored keys), and posts its
 findings back to the PR.
 
-| Action | What it does | AWS access |
+| Action | What it does | IAM role (Bedrock + ...) |
 |---|---|---|
-| `platformr/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | **required**: read-only quota/usage role |
-| `platformr/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | **required**: read-only metadata role |
-| `platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | **optional**: works from plan files with Bedrock only |
+| `platformr/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | read-only quotas, usage metrics, resource counts |
+| `platformr/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | metadata-only existence checks |
+| `platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | CloudFormation change set and pricing reads |
 
 ## How it works
 
 ```
 pull_request ─► job (one per persona, only that persona's secrets)
                  ├─ gather context: PR metadata, changed files, diff, AGENTS.md from the BASE branch
-                 ├─ OIDC ─► persona role ─► named AWS profile        (skipped if the persona needs no AWS)
-                 ├─ OIDC ─► Bedrock role  ─► env credentials for Claude
+                 ├─ OIDC ─► this persona's IAM role (Claude on Bedrock + its read-only AWS checks)
                  ├─ claude-code-action: persona prompt + allowlisted read-only tools + JSON schema output
                  ├─ validate + sanitize the JSON report ─► job summary + one PR comment (updated in place)
                  ├─ one resolvable review thread per finding (deduplicated; auto-resolved when fixed)
@@ -28,18 +27,50 @@ pull_request ─► job (one per persona, only that persona's secrets)
 
 Least privilege is enforced in three layers:
 
-1. **IAM**: each persona has its own role (separate CloudFormation template)
-   with only the read APIs it needs, plus an explicit `Deny` on reading
-   secret values, decrypting, and reading data contents. Persona roles have
-   no Bedrock access; the Bedrock role has nothing *but* Bedrock.
+1. **IAM**: each persona has exactly one role, its own AWS identity
+   (separate CloudFormation template). It can invoke Anthropic models on
+   Bedrock and call only the read APIs that persona needs, with an explicit
+   `Deny` on reading secret values, decrypting, and reading data contents.
+   See [Roles and OIDC](#roles-and-oidc).
 2. **OIDC trust**: roles trust only `pull_request` jobs and/or a named GitHub
    environment, optionally only a specific workflow file
    (`job_workflow_ref`).
 3. **Agent tools**: Claude Code runs with an allowlist of exact read-only
    `aws` subcommands per persona (`.github/actions/<persona>/aws-allowed-tools.txt`), no
    Edit/Write/Web tools, and deny rules for `--endpoint-url`, `--debug`,
-   `aws configure`, and reading `~/.aws`. A persona with no role configured
-   gets no AWS CLI permissions at all.
+   `aws configure`, `aws bedrock*`, `aws sts assume-role*`, reading
+   `~/.aws`, and reading credentials from the environment. A persona with
+   `"aws_cli": false` gets no AWS CLI permissions at all.
+
+## Roles and OIDC
+
+- **One GitHub OIDC provider per AWS account**
+  (`infra/cloudformation/github-oidc-provider.yml`). It is the trust link
+  between GitHub and that account; every role in the account uses it.
+- **One IAM role per persona** (`infra/cloudformation/<persona>/<persona>-role.yml`).
+  It is the persona's only identity: Claude Code uses it to call Bedrock,
+  and the agent's allowlisted `aws` commands use it for read-only checks.
+  CloudTrail shows each persona separately (role name plus session
+  `pr-agent-<persona>-<run id>`).
+- **Each job assumes one role, once**, through OIDC, and clears the
+  credentials at the end of the action.
+
+| Persona | Its role can |
+|---|---|
+| quota-preflight | invoke Claude; read Service Quotas, usage metrics, resource counts |
+| prerequisite-validator | invoke Claude; read resource metadata (never parameter or secret values) |
+| deployment-plan-analysis | invoke Claude; read change sets for allowed stacks and pricing |
+| a persona with `"aws_cli": false` | invoke Claude only |
+
+Because the role calls Bedrock, Bedrock (with access to the Anthropic model)
+must be usable in **every account where a persona role is deployed**, and
+model usage is billed to that account.
+
+Why this is safe: the role is read-only, Bedrock access is limited to
+Anthropic models, and the agent's shell is denied `aws bedrock*` and
+`sts` credential calls, so the Bedrock permission is used only by Claude
+Code itself. Giving each persona its own role keeps permissions and audit
+trails separate per persona.
 
 Untrusted PR content (title, body, diff) is written to files and never
 interpolated into the prompt or shell. Repo guidance is read from the base
@@ -52,8 +83,7 @@ is schema-checked and sanitized (no @mentions, no HTML) before it is posted.
    Actions → General → Access → *Accessible from repositories in the
    organization*.
 2. **Deploy the AWS roles** from `infra/cloudformation/`: the OIDC provider
-   (once per account), the Bedrock role, and the role for each persona that
-   inspects AWS.
+   (once per account) and one role per persona you use.
 3. **Store the role ARNs** as repository or environment secrets in the app
    repository.
 4. **Add a workflow** from [`examples/workflows/`](examples/workflows/) with
@@ -87,8 +117,7 @@ jobs:
         with:
           aws-region: us-east-1
           target-environment: dev
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
 ```
 
 Do **not** trigger these agents with `pull_request_target`: it would expose
@@ -103,9 +132,8 @@ the source of truth):
 | Input | Default | Description |
 |---|---|---|
 | `aws-region` | — | Region the persona inspects. |
-| `bedrock-role-arn` | — | Bedrock-only role. |
-| `target-role-arn` | — | Persona role. **Required** for quota-preflight and prerequisite-validator, **optional** for deployment-plan-analysis. Not present on personas with `aws_access: none`. |
-| `bedrock-region` | `aws-region` | Region for Bedrock calls. |
+| `role-arn` | — | **Required.** This persona's IAM role, used for Bedrock and its read-only checks. |
+| `bedrock-region` | `aws-region` | Region for Bedrock calls (the agent passes `aws-region` on its own AWS CLI calls). |
 | `target-environment` | `""` | Label (dev/prod...). One PR comment per persona per environment. |
 | `model` | `us.anthropic.claude-opus-5-5` | Bedrock model / inference profile ID. |
 | `max-turns` | `60` | Agent turn limit. |
@@ -159,18 +187,17 @@ target branch. The action can't turn that on for you.
 .github/actions/
   quota-preflight/          one directory per persona = one action
     action.yml              GENERATED from scripts/action.template.yml
-    persona.json            title, description, aws_access, role template, extra inputs
+    persona.json            title, description, aws_cli, role template, extra inputs
     prompt.md               persona instructions
     schema.json             structured report contract
-    aws-allowed-tools.txt   read-only aws CLI rules (only granted when a role is assumed)
+    aws-allowed-tools.txt   read-only aws CLI rules (granted when aws_cli is true)
   prerequisite-validator/
   deployment-plan-analysis/
   _shared/                  prompt sections + tool allow/deny lists used by every persona
     scripts/                context gathering, prompt build, report render, comment upsert
 infra/cloudformation/
   github-oidc-provider.yml  shared: once per account
-  bedrock-invoke-role.yml   shared: Bedrock-only role used by every persona
-  <persona>/<persona>-role.yml   read-only OIDC role for each persona that needs AWS
+  <persona>/<persona>-role.yml   the persona's IAM role: Bedrock + its read-only checks
 scripts/                    action.template.yml + generate_actions.py (repo tooling)
 examples/workflows/         workflows to copy into target repositories
 docs/                       setup guides
@@ -179,8 +206,8 @@ docs/                       setup guides
 ## Adding a persona
 
 Create `.github/actions/<name>/` with `persona.json`, `prompt.md`,
-`schema.json`, and (if it uses AWS) `aws-allowed-tools.txt` plus
-`infra/cloudformation/<name>/<name>-role.yml`, then run
+`schema.json`, and (if it uses the AWS CLI) `aws-allowed-tools.txt`; add its
+role at `infra/cloudformation/<name>/<name>-role.yml`; then run
 `python3 scripts/generate_actions.py`. Details:
 [create-your-own.md → Add or change personas](docs/create-your-own.md#6-add-or-change-personas).
 

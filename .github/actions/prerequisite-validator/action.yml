@@ -14,16 +14,13 @@ inputs:
   aws-region:
     description: Region the persona inspects (quotas, SSM parameters, IDs, change sets).
     required: true
-  bedrock-role-arn:
+  role-arn:
     description: >-
-      Role assumed via OIDC to invoke Claude on Bedrock. Usually passed from a
-      repository or environment secret.
+      This persona's IAM role (infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml), assumed via OIDC. It is
+      the persona's only AWS identity: it invokes Claude on Bedrock and makes
+      the persona's read-only AWS CLI calls. Pass it from a repository or
+      environment secret.
     required: true
-  target-role-arn:
-    description: >-
-      Read-only role for this persona (infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml), assumed via OIDC to inspect the target account. Pass it from a repository or environment secret.
-    required: true
-    default: ""
   bedrock-region:
     description: Region used for Bedrock calls. Defaults to aws-region.
     required: false
@@ -148,34 +145,23 @@ runs:
         PERSONA_DIR: ${{ github.action_path }}
         PERSONA: prerequisite-validator
         TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
-        TARGET_ROLE_ARN: ${{ inputs.target-role-arn }}
+        ROLE_ARN: ${{ inputs.role-arn }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
         REPO_GUIDANCE_PATH: ${{ inputs.repo-guidance-path }}
         ORG_RULES: ${{ inputs.org-rules }}
       run: bash "$PERSONA_DIR/../_shared/scripts/gather-context.sh"
 
-    # Read-only persona role -> named profile (never exported as env vars).
-    - name: Assume persona role (target account)
-      if: steps.context.outputs.use-aws == 'true'
-      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-      with:
-        aws-region: ${{ inputs.aws-region }}
-        role-to-assume: ${{ inputs.target-role-arn }}
-        role-session-name: pr-agent-prerequisite-validator-${{ github.run_id }}
-        aws-profile: ${{ steps.context.outputs.profile }}
-        overwrite-aws-profile: "true"
-        output-env-credentials: "false"
-        mask-aws-account-id: "false"
-
-    # Bedrock role -> environment credentials used by Claude Code itself.
-    - name: Assume Bedrock role
+    # One identity per persona: Claude Code uses it for Bedrock, and the
+    # agent's allowlisted aws commands use it for read-only checks.
+    - name: Assume persona role
       uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
       with:
         aws-region: ${{ inputs.bedrock-region || inputs.aws-region }}
-        role-to-assume: ${{ inputs.bedrock-role-arn }}
-        role-session-name: pr-agent-bedrock-${{ github.run_id }}
+        role-to-assume: ${{ inputs.role-arn }}
+        role-session-name: pr-agent-prerequisite-validator-${{ github.run_id }}
         unset-current-credentials: "true"
+        mask-aws-account-id: "false"
 
     - name: Build persona prompt and tool permissions
       id: prepare
@@ -183,7 +169,6 @@ runs:
       env:
         PERSONA_DIR: ${{ github.action_path }}
         CONTEXT_DIR: ${{ steps.context.outputs.dir }}
-        AWS_PROFILE_NAME: ${{ steps.context.outputs.profile }}
         USE_AWS: ${{ steps.context.outputs.use-aws }}
         PERSONA: prerequisite-validator
         TARGET_REGION: ${{ inputs.aws-region }}
@@ -257,26 +242,13 @@ runs:
         THREAD_ON: ${{ inputs.thread-on }}
       run: python3 "$PERSONA_DIR/../_shared/scripts/sync_threads.py"
 
-    - name: Remove persona credentials
+    # Later steps in the caller's job must not inherit the persona's credentials.
+    - name: Clear persona credentials
       if: always()
       shell: bash
-      env:
-        PROFILE: ${{ steps.context.outputs.profile }}
-        USE_AWS: ${{ steps.context.outputs.use-aws }}
       run: |
-        [ "$USE_AWS" = "true" ] && [ -n "$PROFILE" ] || exit 0
-        for f in "$HOME/.aws/credentials" "$HOME/.aws/config"; do
-          [ -f "$f" ] || continue
-          python3 - "$f" "$PROFILE" <<'PY'
-        import configparser, sys
-        path, profile = sys.argv[1], sys.argv[2]
-        cp = configparser.RawConfigParser()
-        cp.read(path)
-        for section in (profile, f"profile {profile}"):
-            cp.remove_section(section)
-        with open(path, "w") as fh:
-            cp.write(fh)
-        PY
+        for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
+          echo "$v=" >> "$GITHUB_ENV"
         done
 
     - name: Enforce verdict

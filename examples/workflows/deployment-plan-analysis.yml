@@ -1,9 +1,9 @@
 # Deployment plan analysis. A deploy-tooling job produces change sets (it
 # uses YOUR existing deploy role, not an agent role) and uploads them; the
-# agent job then analyzes the files with Bedrock access ONLY: no AWS role
-# for the agent at all. Add target-role-arn with
-# infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml if you
-# want it to read live change sets and the Pricing API as well.
+# agent job then analyzes the files with the persona's own role
+# (infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml),
+# which can invoke Claude on Bedrock and read change sets and pricing, but
+# can't create or execute change sets.
 name: Deployment plan analysis
 
 on:
@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write        # Bedrock role only
+      id-token: write        # OIDC -> persona role
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -71,8 +71,7 @@ jobs:
       - uses: platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1
         with:
           aws-region: us-east-1
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          # no target-role-arn: this agent gets no AWS access beyond Bedrock
+          role-arn: ${{ secrets.AWS_PR_AGENT_PLAN_ROLE_ARN }}
           plan-files: |
             plans/*.json
           cost-threshold-usd: "250"

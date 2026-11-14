@@ -41,8 +41,7 @@ jobs:
         with:
           aws-region: ${{ matrix.target.region }}
           target-environment: ${{ matrix.target.env }}
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
           fail-on: ${{ matrix.target.env == 'prod' && 'important' || 'critical' }}
 
   prerequisite-validator:
@@ -68,6 +67,5 @@ jobs:
         with:
           aws-region: ${{ matrix.target.region }}
           target-environment: ${{ matrix.target.env }}
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
           fail-on: ${{ matrix.target.env == 'prod' && 'important' || 'critical' }}

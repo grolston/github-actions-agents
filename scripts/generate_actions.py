@@ -18,19 +18,6 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "scripts" / "action.template.yml"
 ACTIONS = ROOT / ".github" / "actions"
 
-ROLE_DESCRIPTIONS = {
-    "required": (
-        "Read-only role for this persona ({role_template}), assumed via OIDC "
-        "to inspect the target account. Pass it from a repository or "
-        "environment secret."
-    ),
-    "optional": (
-        "Optional read-only role ({role_template}). When empty the agent "
-        "runs with Bedrock access only and no AWS CLI permissions."
-    ),
-}
-
-
 def personas() -> list[Path]:
     return sorted(p.parent for p in ACTIONS.glob("*/persona.json"))
 
@@ -38,12 +25,11 @@ def personas() -> list[Path]:
 def render(persona_dir: Path) -> str:
     meta = json.loads((persona_dir / "persona.json").read_text())
     name = persona_dir.name
-    access = meta["aws_access"]
+    if not isinstance(meta.get("aws_cli"), bool):
+        raise SystemExit(f"{name}: persona.json needs \"aws_cli\": true or false")
+    if not meta.get("role_template"):
+        raise SystemExit(f"{name}: persona.json needs role_template (every persona has its own IAM role)")
     flags = {f"input:{i}" for i in meta.get("inputs", [])}
-    if access in ("required", "optional"):
-        flags.add("aws")
-    elif access != "none":
-        raise SystemExit(f"{name}: invalid aws_access {access!r}")
 
     out, stack = [], []
     for line in TEMPLATE.read_text().splitlines(keepends=True):
@@ -64,8 +50,7 @@ def render(persona_dir: Path) -> str:
         "TITLE": meta["title"],
         "DESCRIPTION": meta["description"],
         "ICON": meta.get("icon", "shield"),
-        "TARGET_ROLE_REQUIRED": "true" if access == "required" else "false",
-        "TARGET_ROLE_DESCRIPTION": ROLE_DESCRIPTIONS.get(access, "").format(**meta),
+        "ROLE_TEMPLATE": meta["role_template"],
     }
     text = "".join(out)
     text = re.sub(r"\{\{([A-Z_]+)\}\}", lambda m: values[m.group(1)], text)

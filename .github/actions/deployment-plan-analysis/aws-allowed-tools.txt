@@ -1,4 +1,4 @@
-# Only granted when target-role-arn is set (aws_access: optional).
+# Read-only change set and pricing lookups; mirrors the persona role's policy.
 # Mirrors infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml.
 Bash(aws cloudformation describe-change-set *)
 Bash(aws cloudformation describe-stacks *)

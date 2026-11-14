@@ -58,7 +58,6 @@ def main() -> None:
     persona = env("PERSONA")
     persona_dir = Path(os.environ["PERSONA_DIR"])
     context_dir = env("CONTEXT_DIR")
-    profile = env("AWS_PROFILE_NAME")
 
     if not re.fullmatch(r"\d+", env("MAX_TURNS", "60")):
         fail("max-turns must be a positive integer")
@@ -72,7 +71,6 @@ def main() -> None:
         "REPO": env("REPO"),
         "PR_NUMBER": env("PR_NUMBER"),
         "CONTEXT_DIR": context_dir,
-        "AWS_PROFILE": profile,
         "TARGET_REGION": env("TARGET_REGION"),
         "TARGET_ENVIRONMENT": env("TARGET_ENVIRONMENT") or "unspecified",
         "ORG_RULES_VERSION": env("ORG_RULES_VERSION", "unversioned"),
@@ -102,7 +100,7 @@ def main() -> None:
 
     allowed = read_list(SHARED / "allowed-tools.txt")
     if use_aws:
-        # AWS CLI rules are granted only when a persona role was assumed.
+        # AWS CLI rules are granted only to personas with aws_cli: true.
         allowed += read_list(SHARED / "aws-allowed-tools.txt") + read_list(persona_dir / "aws-allowed-tools.txt")
     allowed += read_list(persona_dir / "allowed-tools.txt")
     allowed += [t.strip() for t in env("EXTRA_ALLOWED_TOOLS").split(",") if t.strip()]
@@ -129,7 +127,7 @@ def main() -> None:
     write_output("prompt", prompt)
     write_output("claude-args", claude_args)
 
-    print(f"Persona: {persona} (AWS access: {use_aws})")
+    print(f"Persona: {persona} (AWS CLI: {use_aws})")
     print(f"Prompt: {len(prompt)} chars (saved to {context_dir}/prompt.md)")
     print("Allowed tools:\n  " + "\n  ".join(allowed))
     print("Denied tools:\n  " + "\n  ".join(disallowed))

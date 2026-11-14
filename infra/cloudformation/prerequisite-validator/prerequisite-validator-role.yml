@@ -1,13 +1,14 @@
 ---
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Read-only, metadata-only role for the prerequisite-validator PR agent:
+  Role for the prerequisite-validator PR agent: invokes Claude on Bedrock and
   confirms referenced SSM parameters, secrets, IDs, and ARNs exist without
-  reading any parameter or secret values.
+  reading any parameter or secret values (metadata only).
 
-# Deploy in every account/region pair this persona must inspect. The agent
-# runs Claude through the separate Bedrock role (infra/cloudformation/bedrock-invoke-role.yml);
-# this role has NO Bedrock access and only the read-only APIs listed below.
+# This is the persona's only AWS identity: it invokes Claude on Bedrock and
+# makes the persona's read-only AWS CLI calls. Deploy it in every account the
+# persona inspects; Bedrock (with access to the Anthropic model) must be
+# usable in that account. It can never read secret values or data contents.
 
 Parameters:
 
@@ -69,6 +70,14 @@ Parameters:
     MinValue: 900
     MaxValue: 43200
 
+  BedrockModelIdPattern:
+    Type: String
+    Description: >-
+      Anthropic model ID pattern this role may invoke. Applies to foundation
+      models and the matching cross-region inference profiles (us.*, eu.*,
+      apac.*, global.*).
+    Default: anthropic.claude-*
+
 Conditions:
   UseDefaultProviderArn: !Equals ["", !Ref OidcProviderArn]
   TrustBoth: !Equals [both, !Ref TrustMode]
@@ -80,7 +89,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
-      Description: Metadata-only existence checks for resources referenced by a PR.
+      Description: Invoke Claude on Bedrock; metadata-only existence checks for resources referenced by a PR.
       MaxSessionDuration: !Ref MaxSessionDuration
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -170,6 +179,23 @@ Resources:
                   - sns:GetTopicAttributes
                   - sqs:GetQueueUrl
                 Resource: "*"
+        - PolicyName: bedrock-invoke-anthropic
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: InvokeAnthropicModels
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource:
+                  - !Sub arn:${AWS::Partition}:bedrock:*::foundation-model/${BedrockModelIdPattern}
+                  - !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*.${BedrockModelIdPattern}
+              - Sid: ResolveInferenceProfiles
+                Effect: Allow
+                Action:
+                  - bedrock:GetInferenceProfile
+                Resource: !Sub arn:${AWS::Partition}:bedrock:*:${AWS::AccountId}:inference-profile/*.${BedrockModelIdPattern}
         - PolicyName: deny-data-reads
           PolicyDocument:
             Version: "2012-10-17"
@@ -197,7 +223,6 @@ Resources:
                   - logs:GetLogEvents
                   - logs:FilterLogEvents
                   - logs:StartQuery
-                  - bedrock:InvokeModel*
                 Resource: "*"
               - Sid: DenyCustomerParameterValues
                 Effect: Deny
@@ -214,5 +239,5 @@ Resources:
 
 Outputs:
   RoleArn:
-    Description: Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
+    Description: Persona role (Bedrock + read-only checks). Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
     Value: !GetAtt PersonaRole.Arn

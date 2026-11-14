@@ -136,29 +136,32 @@ Each persona is one directory under `.github/actions/<name>/`. The
        "title": "IAM Policy Review",
        "description": "One sentence shown in the action metadata.",
        "icon": "shield",
-       "aws_access": "none",
-       "role_template": "",
+       "aws_cli": false,
+       "role_template": "infra/cloudformation/iam-policy-review/iam-policy-review-role.yml",
        "inputs": []
      }
      ```
 
-     `aws_access` is `required`, `optional`, or `none`. A `none` persona has
-     no `target-role-arn` input and needs only the Bedrock role.
+     `aws_cli` decides whether the agent gets AWS CLI tools. Every persona
+     has its own IAM role either way, because Claude runs on Bedrock with
+     it.
    - `prompt.md`: what the persona checks and how it rates severity. It can
-     use `{{CONTEXT_DIR}}`, `{{AWS_PROFILE}}`, `{{TARGET_REGION}}`,
-     `{{TARGET_ENVIRONMENT}}`, `{{REPO}}`, `{{PR_NUMBER}}`, `{{PERSONA}}`,
-     `{{ORG_RULES_VERSION}}`, and `{{COST_THRESHOLD_USD}}`.
+     use `{{CONTEXT_DIR}}`, `{{TARGET_REGION}}`, `{{TARGET_ENVIRONMENT}}`,
+     `{{REPO}}`, `{{PR_NUMBER}}`, `{{PERSONA}}`, `{{ORG_RULES_VERSION}}`,
+     and `{{COST_THRESHOLD_USD}}`.
    - `schema.json`: the report contract. Copy an existing persona's schema
      and keep `persona`, `verdict`, `findings` (with `id`, `severity`,
      `category`, `resource`, `description`, `recommendation`, `evidence`,
      optional `file`), and `summary_markdown`. No single quotes anywhere in
      the file.
-   - `aws-allowed-tools.txt` (only if it uses AWS): one read-only Claude Code
-     rule per line, e.g. `Bash(aws ec2 describe-vpcs *)`.
-2. If it uses AWS, add `infra/cloudformation/<name>/<name>-role.yml`. Start
-   from an existing persona role template so it keeps the OIDC trust
-   parameters and the deny-data-reads policy, and grant only the read APIs
-   that match `aws-allowed-tools.txt`.
+   - `aws-allowed-tools.txt` (only with `"aws_cli": true`): one read-only
+     Claude Code rule per line, e.g. `Bash(aws ec2 describe-vpcs *)`.
+2. Add its role at `infra/cloudformation/<name>/<name>-role.yml`. Copy an
+   existing persona role template so it keeps the OIDC trust parameters, the
+   `bedrock-invoke-anthropic` policy, and the `deny-data-reads` policy. Then
+   replace the persona's read policy with only the read APIs that match
+   `aws-allowed-tools.txt`, or remove it for a persona with
+   `"aws_cli": false`.
 3. Generate the action and check it:
 
    ```bash

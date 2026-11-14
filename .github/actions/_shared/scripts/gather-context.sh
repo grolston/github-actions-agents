@@ -26,32 +26,19 @@ if ! git -C "${GITHUB_WORKSPACE:-.}" rev-parse --git-dir >/dev/null 2>&1; then
   exit 1
 fi
 
-# Does this persona get AWS access? Driven by .github/actions/<persona>/persona.json.
-aws_access=$(jq -r '.aws_access // "none"' "$PERSONA_DIR/persona.json")
-use_aws=false
-case "$aws_access" in
-  required)
-    if [[ -z "${TARGET_ROLE_ARN:-}" ]]; then
-      echo "::error::Persona '$PERSONA' requires AWS access: set target-role-arn to its read-only role."
-      exit 1
-    fi
-    use_aws=true ;;
-  optional)
-    [[ -n "${TARGET_ROLE_ARN:-}" ]] && use_aws=true ;;
-  none)
-    [[ -n "${TARGET_ROLE_ARN:-}" ]] && echo "::warning::Persona '$PERSONA' does not use AWS; ignoring target-role-arn."
-    ;;
-  *)
-    echo "::error::$PERSONA/persona.json has invalid aws_access '$aws_access'."
-    exit 1 ;;
-esac
-echo "AWS access for $PERSONA: $use_aws ($aws_access)"
+if [[ -z "${ROLE_ARN:-}" ]]; then
+  echo "::error::Set role-arn to this persona's IAM role (infra/cloudformation/$PERSONA/)."
+  exit 1
+fi
+
+# Does the agent get AWS CLI tools? Driven by .github/actions/<persona>/persona.json.
+use_aws=$(jq -r 'if .aws_cli == true then "true" else "false" end' "$PERSONA_DIR/persona.json")
+echo "AWS CLI for $PERSONA: $use_aws"
 
 suffix="$PERSONA${TARGET_ENVIRONMENT:+-$TARGET_ENVIRONMENT}"
 ctx="$RUNNER_TEMP/pr-agent/$suffix"
 rm -rf "$ctx"
 mkdir -p "$ctx/plans"
-profile="pr-agent-$suffix"
 
 echo "Collecting PR #$PR_NUMBER metadata"
 gh pr view "$PR_NUMBER" --repo "$REPO" \
@@ -123,7 +110,6 @@ fi
 
 {
   echo "dir=$ctx"
-  echo "profile=$profile"
   echo "use-aws=$use_aws"
   echo "pr-number=$PR_NUMBER"
   echo "base-sha=$base_sha"

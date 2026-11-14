@@ -38,16 +38,29 @@ agents repository, use `@main` or a commit SHA.
 
 ## 2. Deploy the AWS roles
 
-All templates are in `infra/cloudformation/`. Every agent needs the Bedrock
-role; only some need a role in the account they inspect.
+All templates are in `infra/cloudformation/`.
+
+**How the identities fit together:**
+
+- **One OIDC provider per AWS account.** It lets GitHub jobs assume roles in
+  that account. Every role in the account uses it.
+- **One IAM role per persona.** It's the persona's only AWS identity: Claude
+  Code uses it to call Bedrock, and the agent uses it for its read-only AWS
+  CLI checks. Each job assumes it once.
+
+Deploy only the roles for the personas you use:
 
 | Template | Deploy where | Secret to store |
 |---|---|---|
-| `github-oidc-provider.yml` | Once per AWS account, in every account below. Skip it if the account already has a `token.actions.githubusercontent.com` provider. | — |
-| `bedrock-invoke-role.yml` | The account where Bedrock runs | `AWS_PR_AGENT_BEDROCK_ROLE_ARN` |
+| `github-oidc-provider.yml` | Once per AWS account that has a persona role. Skip it if the account already has a `token.actions.githubusercontent.com` provider. | — |
 | `quota-preflight/quota-preflight-role.yml` | Each account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
 | `prerequisite-validator/prerequisite-validator-role.yml` | Each account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
-| `deployment-plan-analysis/deployment-plan-analysis-role.yml` | Optional: only for live change set or pricing lookups | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
+| `deployment-plan-analysis/deployment-plan-analysis-role.yml` | The account whose change sets it reads (or any account with Bedrock if it only reads plan files) | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
+
+Because each persona role calls Bedrock, Bedrock must be usable in every
+account where you deploy one (see [Make sure the account can use the
+model](#make-sure-the-account-can-use-the-model)), and model usage is billed
+to that account.
 
 ### Decide how roles are trusted
 
@@ -73,9 +86,6 @@ Two common setups:
   secrets with the same names in each environment. Use dedicated
   environments so deploy approvals don't block PR checks.
 
-The Bedrock role must trust every way it is used. If some jobs run in an
-environment and others don't, deploy it with `TrustMode=both`.
-
 To find the numeric IDs (only needed for the immutable-ID token format):
 
 ```bash
@@ -97,13 +107,6 @@ aws cloudformation deploy --stack-name github-oidc-provider \
 ```
 
 ```bash
-aws cloudformation deploy --stack-name github-pr-agent-bedrock \
-  --template-file infra/cloudformation/bedrock-invoke-role.yml \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides GitHubOrganization=<org> RepositoryName=<app-repo> TrustMode=both WorkflowFile='pr-agents*.yml'
-```
-
-```bash
 aws cloudformation deploy --stack-name github-pr-agent-quota-preflight \
   --template-file infra/cloudformation/quota-preflight/quota-preflight-role.yml \
   --capabilities CAPABILITY_NAMED_IAM \
@@ -120,12 +123,12 @@ aws cloudformation deploy --stack-name github-pr-agent-prerequisite-validator \
 Read each role ARN from its stack's `RoleArn` output:
 
 ```bash
-aws cloudformation describe-stacks --stack-name github-pr-agent-bedrock --query "Stacks[0].Outputs[?OutputKey=='RoleArn'].OutputValue" --output text
+aws cloudformation describe-stacks --stack-name github-pr-agent-quota-preflight --query "Stacks[0].Outputs[?OutputKey=='RoleArn'].OutputValue" --output text
 ```
 
 ### Make sure the account can use the model
 
-In the Bedrock account, open the Bedrock console and confirm the Anthropic
+In every account with a persona role, open the Bedrock console and confirm the Anthropic
 model you'll use (default `us.anthropic.claude-opus-5-5`) is available. The
 first Anthropic model in an account needs a one-time use-case form; if the
 console still shows a **Model access** page, enable the model there. A `us.`
@@ -154,8 +157,8 @@ adjust the region, environment names, and `paths:` filter:
 - [`pr-agents-environments.yml`](../examples/workflows/pr-agents-environments.yml):
   each agent once per environment, with environment secrets.
 - [`deployment-plan-analysis.yml`](../examples/workflows/deployment-plan-analysis.yml):
-  your own job builds the change sets; the agent analyzes them with Bedrock
-  access only.
+  your own job builds the change sets; the agent analyzes them with its
+  persona role, which can't create or run change sets.
 
 A minimal job:
 
@@ -175,8 +178,7 @@ jobs:
         with:
           aws-region: us-east-1
           target-environment: dev
-          bedrock-role-arn: ${{ secrets.AWS_PR_AGENT_BEDROCK_ROLE_ARN }}
-          target-role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
 ```
 
 Keep these as they are:
@@ -255,8 +257,7 @@ itself never gets tools that write to GitHub.
 Open a test PR that changes an infrastructure file (it has to match the
 workflow's `paths:` filter), then check:
 
-- [ ] Each agent's job starts and passes **Assume Bedrock role** (and
-      **Assume persona role** where used).
+- [ ] Each agent's job starts and passes **Assume persona role**.
 - [ ] The PR gets one summary comment per agent (per environment).
 - [ ] Findings at or above `thread-on` appear as review threads in **Files
       changed**.
@@ -274,7 +275,7 @@ workflow's `paths:` filter), then check:
 | `Unable to resolve action ... repository not found` | The agents repository is private and not shared with the org (step 1), or the ref (e.g. `@v1`) doesn't exist yet. |
 | `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, or `id-token: write` is missing. |
 | `Credentials could not be loaded` | The secret is empty in this context: an environment secret read by a job without `environment:`, or the reverse. |
-| Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the Bedrock role. |
+| Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the persona role. |
 | `Resource not accessible by integration` when commenting | The job is missing `pull-requests: write`, or the PR is from a fork or Dependabot (their token is read-only). |
 | Verdict `error`, "agent produced no structured output" | The agent ran out of turns or hit an error; see the agent step's log. Raise `max-turns` if it was still working. |
 | Threads are created but never auto-resolve | The token can't resolve review threads. Use a GitHub App token (step 6). |

@@ -13,6 +13,17 @@ Bash(*--debug*)
 Bash(*--ca-bundle*)
 Bash(*--no-verify-ssl*)
 Bash(aws configure *)
+# The persona role can invoke Bedrock for Claude Code itself; the agent's
+# shell must not call models or mint other credentials with it.
+Bash(aws bedrock*)
+Bash(aws sts assume-role*)
+Bash(aws sts get-session-token*)
+Bash(aws sts get-federation-token*)
+# No reading the credentials from the environment.
+Bash(env*)
+Bash(printenv*)
+Bash(*AWS_SECRET_ACCESS_KEY*)
+Bash(*AWS_SESSION_TOKEN*)
 # Credential and process files on the runner.
 Read(~/.aws/**)
 Read(//home/runner/.aws/**)
