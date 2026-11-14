@@ -101,7 +101,7 @@ Step-by-step guides:
   this repository under your org, share it, release and tag it, and add
   personas.
 
-Minimal job (use `@main` or a commit SHA until a `v1` tag exists):
+Minimal job:
 
 ```yaml
 jobs:
@@ -219,6 +219,7 @@ role at `infra/cloudformation/<name>/<name>-role.yml`; then run
 
 Consumers pin each persona action to a release tag
 (`.../.github/actions/quota-preflight@v1`) or a commit SHA; all personas are
-versioned together with the repository. No tag exists yet, so use `@main` or
-a SHA for now. How to cut releases:
+versioned together with the repository. `v1` follows the latest compatible
+release; pin `v1.0.0` or a SHA if you want updates only when you choose.
+How to cut releases:
 [create-your-own.md → Release and versioning](docs/create-your-own.md#5-release-and-versioning).
