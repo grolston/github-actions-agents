@@ -9,9 +9,9 @@ findings back to the PR.
 
 | Action | What it does | IAM role (Bedrock + ...) |
 |---|---|---|
-| `platformr/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | read-only quotas, usage metrics, resource counts |
-| `platformr/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | metadata-only existence checks |
-| `platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | CloudFormation change set and pricing reads |
+| `grolston/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | read-only quotas, usage metrics, resource counts |
+| `grolston/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | metadata-only existence checks |
+| `grolston/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | CloudFormation change set and pricing reads |
 
 ## How it works
 
@@ -81,9 +81,9 @@ is schema-checked and sanitized (no @mentions, no HTML) before it is posted.
 
 ## Setup
 
-1. **Share the actions** (private agents repository only): Settings →
-   Actions → General → Access → *Accessible from repositories in the
-   organization*.
+1. **Check access to the actions.** This repository is public, so any
+   repository can use its actions. A private copy has to be shared first:
+   see [create-your-own.md](docs/create-your-own.md#3-let-other-repositories-use-the-actions).
 2. **Deploy the AWS roles** from `infra/cloudformation/`: the OIDC provider
    (once per account) and one role per persona you use.
 3. **Store the role ARNs** as repository or environment secrets in the app
@@ -115,7 +115,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
+      - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
         with:
           aws-region: us-east-1
           target-environment: dev

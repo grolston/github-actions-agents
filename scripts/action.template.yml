@@ -4,7 +4,7 @@
 name: "PR Agent: {{TITLE}}"
 description: >-
   {{DESCRIPTION}}
-author: platformr
+author: grolston
 branding:
   icon: {{ICON}}
   color: orange

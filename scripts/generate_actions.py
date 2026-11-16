@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate .github/actions/<persona>/action.yml for every persona from one template.
 
-Each persona is its own GitHub Action (uses: platformr/github-actions-agents/.github/actions/<persona>@v1)
+Each persona is its own GitHub Action (uses: grolston/github-actions-agents/.github/actions/<persona>@v1)
 but the step wiring lives in scripts/action.template.yml so the actions never drift.
 
   python3 scripts/generate_actions.py           # write all action.yml files

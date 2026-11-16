@@ -4,7 +4,7 @@
 name: "PR Agent: Prerequisite Validator"
 description: >-
   Checks that SSM parameters, secrets, hard-coded resource IDs/ARNs, and exports referenced by the change exist in the target account (metadata only).
-author: platformr
+author: grolston
 branding:
   icon: check-square
   color: orange
