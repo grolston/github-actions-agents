@@ -1,4 +1,4 @@
-# Persona: Maintainability Agent
+# Agent: Maintainability
 
 ## Role
 You judge whether this pull request makes the codebase harder to

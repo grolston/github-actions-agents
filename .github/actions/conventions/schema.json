@@ -4,14 +4,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "persona",
+    "agent",
     "verdict",
     "conventions",
     "findings",
     "summary_markdown"
   ],
   "properties": {
-    "persona": {
+    "agent": {
       "type": "string",
       "const": "conventions"
     },

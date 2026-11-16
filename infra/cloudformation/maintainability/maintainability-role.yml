@@ -2,10 +2,10 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
   Role for the maintainability PR agent: invokes Claude on Bedrock and nothing
-  else. The persona reviews code only and has no AWS CLI access.
+  else. The agent reviews code only and has no AWS CLI access.
 
-# This is the persona's only AWS identity, used to invoke Claude on Bedrock.
-# The persona makes no AWS CLI calls, so one account with Bedrock (and access
+# This is the agent's only AWS identity, used to invoke Claude on Bedrock.
+# The agent makes no AWS CLI calls, so one account with Bedrock (and access
 # to the Anthropic model) is enough. It can never read secret values or data
 # contents.
 
@@ -84,7 +84,7 @@ Conditions:
 
 Resources:
 
-  PersonaRole:
+  AgentRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
@@ -179,5 +179,5 @@ Resources:
 
 Outputs:
   RoleArn:
-    Description: Persona role (Bedrock only). Store as the AWS_PR_AGENT_MAINTAINABILITY_ROLE_ARN secret (repository or environment).
-    Value: !GetAtt PersonaRole.Arn
+    Description: Agent role (Bedrock only). Store as the AWS_PR_AGENT_MAINTAINABILITY_ROLE_ARN secret (repository or environment).
+    Value: !GetAtt AgentRole.Arn

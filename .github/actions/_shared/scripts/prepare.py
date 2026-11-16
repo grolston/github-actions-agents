@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compose the persona prompt and Claude Code CLI arguments.
+"""Compose the agent prompt and Claude Code CLI arguments.
 
 Only trusted values (action inputs, repository metadata, file paths) are
 substituted into the prompt. Untrusted PR content stays in files under
@@ -55,8 +55,8 @@ def fail(msg: str) -> None:
 
 
 def main() -> None:
-    persona = env("PERSONA")
-    persona_dir = Path(os.environ["PERSONA_DIR"])
+    agent = env("AGENT")
+    agent_dir = Path(os.environ["AGENT_DIR"])
     context_dir = env("CONTEXT_DIR")
 
     if not re.fullmatch(r"\d+", env("MAX_TURNS", "60")):
@@ -67,7 +67,7 @@ def main() -> None:
         fail("cost-threshold-usd must be a number")
 
     values = {
-        "PERSONA": persona,
+        "AGENT": agent,
         "REPO": env("REPO"),
         "PR_NUMBER": env("PR_NUMBER"),
         "CONTEXT_DIR": context_dir,
@@ -82,7 +82,7 @@ def main() -> None:
     parts = [
         render((SHARED / "preamble.md").read_text(), values),
         render((SHARED / ("aws-access.md" if use_aws else "no-aws-access.md")).read_text(), values),
-        render((persona_dir / "prompt.md").read_text(), values),
+        render((agent_dir / "prompt.md").read_text(), values),
     ]
     extra = env("EXTRA_INSTRUCTIONS")
     if extra:
@@ -93,23 +93,23 @@ def main() -> None:
     prompt = "\n\n".join(parts)
     Path(context_dir, "prompt.md").write_text(prompt)
 
-    schema = json.loads((persona_dir / "schema.json").read_text())
+    schema = json.loads((agent_dir / "schema.json").read_text())
     schema_compact = json.dumps(schema, separators=(",", ":"))
     if "'" in schema_compact:
-        fail(f"{persona}/schema.json must not contain single quotes")
+        fail(f"{agent}/schema.json must not contain single quotes")
 
     allowed = read_list(SHARED / "allowed-tools.txt")
     if use_aws:
-        # AWS CLI rules are granted only to personas with aws_cli: true.
-        allowed += read_list(SHARED / "aws-allowed-tools.txt") + read_list(persona_dir / "aws-allowed-tools.txt")
-    allowed += read_list(persona_dir / "allowed-tools.txt")
+        # AWS CLI rules are granted only to agents with aws_cli: true.
+        allowed += read_list(SHARED / "aws-allowed-tools.txt") + read_list(agent_dir / "aws-allowed-tools.txt")
+    allowed += read_list(agent_dir / "allowed-tools.txt")
     allowed += [t.strip() for t in env("EXTRA_ALLOWED_TOOLS").split(",") if t.strip()]
     disallowed = read_list(SHARED / "disallowed-tools.txt")
     for tool in allowed + disallowed:
         if any(ch in tool for ch in "\"'`$\n,"):
             fail(f"Tool rule contains a forbidden character: {tool!r}")
         if tool.split("(", 1)[0] in {"Edit", "Write", "MultiEdit", "NotebookEdit", "WebFetch", "WebSearch"} and tool in allowed:
-            fail(f"Persona agents are read-only; {tool!r} cannot be allowed")
+            fail(f"Agents are read-only; {tool!r} cannot be allowed")
 
     allowed_arg = ",".join(allowed)
     disallowed_arg = ",".join(disallowed)
@@ -127,7 +127,7 @@ def main() -> None:
     write_output("prompt", prompt)
     write_output("claude-args", claude_args)
 
-    print(f"Persona: {persona} (AWS CLI: {use_aws})")
+    print(f"Agent: {agent} (AWS CLI: {use_aws})")
     print(f"Prompt: {len(prompt)} chars (saved to {context_dir}/prompt.md)")
     print("Allowed tools:\n  " + "\n  ".join(allowed))
     print("Denied tools:\n  " + "\n  ".join(disallowed))

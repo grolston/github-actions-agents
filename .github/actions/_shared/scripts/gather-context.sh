@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Collects everything the persona needs into a private context directory.
+# Collects everything the agent needs into a private context directory.
 # Untrusted PR data (title, body, diff) is written to files and never
 # interpolated into the prompt, shell commands, or workflow expressions.
 set -euo pipefail
 
-: "${PERSONA_DIR:?}" "${PERSONA:?}" "${REPO:?}" "${RUNNER_TEMP:?}"
+: "${AGENT_DIR:?}" "${AGENT:?}" "${REPO:?}" "${RUNNER_TEMP:?}"
 
-if [[ ! "$PERSONA" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [[ ! -f "$PERSONA_DIR/prompt.md" ]]; then
-  echo "::error::Persona files for '$PERSONA' not found in $PERSONA_DIR."
+if [[ ! "$AGENT" =~ ^[a-z0-9][a-z0-9-]*$ ]] || [[ ! -f "$AGENT_DIR/prompt.md" ]]; then
+  echo "::error::Agent files for '$AGENT' not found in $AGENT_DIR."
   exit 1
 fi
 
@@ -27,15 +27,15 @@ if ! git -C "${GITHUB_WORKSPACE:-.}" rev-parse --git-dir >/dev/null 2>&1; then
 fi
 
 if [[ -z "${ROLE_ARN:-}" ]]; then
-  echo "::error::Set role-arn to this persona's IAM role (infra/cloudformation/$PERSONA/)."
+  echo "::error::Set role-arn to this agent's IAM role (infra/cloudformation/$AGENT/)."
   exit 1
 fi
 
-# Does the agent get AWS CLI tools? Driven by .github/actions/<persona>/persona.json.
-use_aws=$(jq -r 'if .aws_cli == true then "true" else "false" end' "$PERSONA_DIR/persona.json")
-echo "AWS CLI for $PERSONA: $use_aws"
+# Does the agent get AWS CLI tools? Driven by .github/actions/<agent>/agent.json.
+use_aws=$(jq -r 'if .aws_cli == true then "true" else "false" end' "$AGENT_DIR/agent.json")
+echo "AWS CLI for $AGENT: $use_aws"
 
-suffix="$PERSONA${TARGET_ENVIRONMENT:+-$TARGET_ENVIRONMENT}"
+suffix="$AGENT${TARGET_ENVIRONMENT:+-$TARGET_ENVIRONMENT}"
 ctx="$RUNNER_TEMP/pr-agent/$suffix"
 rm -rf "$ctx"
 mkdir -p "$ctx/plans"

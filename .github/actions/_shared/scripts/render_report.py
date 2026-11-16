@@ -2,7 +2,7 @@
 """Validate the agent's structured output and render it as markdown.
 
 The agent's output is model-authored and may echo untrusted PR content, so
-it is validated against the persona contract, sanitized (no @mentions, no
+it is validated against the agent contract, sanitized (no @mentions, no
 HTML comments, no raw HTML), and size-limited before it is published.
 """
 from __future__ import annotations
@@ -80,17 +80,17 @@ def load_structured_output() -> tuple[dict | None, str]:
 # Validation
 # ---------------------------------------------------------------------------
 
-def validate(report: dict, persona: str) -> list[str]:
+def validate(report: dict, agent: str) -> list[str]:
     problems = []
-    schema_path = Path(env("PERSONA_DIR") or ACTIONS / persona) / "schema.json"
+    schema_path = Path(env("AGENT_DIR") or ACTIONS / agent) / "schema.json"
     required = []
     if schema_path.is_file():
         required = json.loads(schema_path.read_text()).get("required", [])
     for key in required:
         if key not in report:
             problems.append(f"missing required field '{key}'")
-    if report.get("persona") not in (None, persona):
-        problems.append(f"persona is '{report.get('persona')}', expected '{persona}'")
+    if report.get("agent") not in (None, agent):
+        problems.append(f"agent is '{report.get('agent')}', expected '{agent}'")
     if report.get("verdict") not in VERDICT_ICON:
         problems.append(f"invalid verdict '{report.get('verdict')}'")
     findings = report.get("findings", [])
@@ -106,7 +106,7 @@ def validate(report: dict, persona: str) -> list[str]:
 def redact_credentials(value):
     """Blank out this job's AWS credential values wherever the report repeats them.
 
-    The persona role's credentials are in the agent's environment. The tool
+    The agent role's credentials are in the agent's environment. The tool
     deny rules make them hard to read, but the report is the one thing the
     agent can publish, so the exact values are removed here as a backstop.
     """
@@ -127,9 +127,9 @@ def redact_credentials(value):
     return walk(value) if values else value
 
 
-def error_report(persona: str, reason: str) -> dict:
+def error_report(agent: str, reason: str) -> dict:
     return {
-        "persona": persona,
+        "agent": agent,
         "verdict": "error",
         "findings": [],
         "summary_markdown": f"The agent did not return a usable report: {reason}.",
@@ -181,7 +181,7 @@ def title_case(slug: str) -> str:
     return slug.replace("-", " ").replace("_", " ").title()
 
 
-def render(report: dict, persona: str, marker: str, source_note: str) -> str:
+def render(report: dict, agent: str, marker: str, source_note: str) -> str:
     verdict = report.get("verdict", "error")
     findings = sorted(
         [f for f in report.get("findings", []) if isinstance(f, dict)],
@@ -195,7 +195,7 @@ def render(report: dict, persona: str, marker: str, source_note: str) -> str:
 
     lines = [
         marker,
-        f"### {VERDICT_ICON.get(verdict, '❔')} {title_case(persona)} — {verdict}",
+        f"### {VERDICT_ICON.get(verdict, '❔')} {title_case(agent)} — {verdict}",
         "",
     ]
     if scope:
@@ -242,13 +242,13 @@ def render(report: dict, persona: str, marker: str, source_note: str) -> str:
         ]
 
     scalars = {k: v for k, v in report.items()
-               if k not in {"persona", "verdict", "summary_markdown"} and isinstance(v, (str, int, float, bool))}
+               if k not in {"agent", "verdict", "summary_markdown"} and isinstance(v, (str, int, float, bool))}
     if scalars:
         lines.append(" · ".join(f"**{cell(title_case(k))}:** {cell(v)}" for k, v in scalars.items()))
         lines.append("")
 
     run_url = env("RUN_URL")
-    footer = f"<sub>Read-only review by the `{persona}` agent. Advisory only — it does not approve or deploy."
+    footer = f"<sub>Read-only review by the `{agent}` agent. Advisory only — it does not approve or deploy."
     if run_url:
         footer += f" [Run log]({run_url})."
     if source_note:
@@ -279,21 +279,21 @@ def write_output(name: str, value: str) -> None:
 
 
 def main() -> None:
-    persona = env("PERSONA")
+    agent = env("AGENT")
     context_dir = Path(env("CONTEXT_DIR") or ".")
     target_env = env("TARGET_ENVIRONMENT")
 
     report, source = load_structured_output()
     note = ""
     if report is None:
-        report = error_report(persona, source)
+        report = error_report(agent, source)
     else:
         report = redact_credentials(report)
-        problems = validate(report, persona)
+        problems = validate(report, agent)
         if problems:
             note = "Report failed validation: " + "; ".join(problems) + "."
             original = report
-            report = error_report(persona, "; ".join(problems))
+            report = error_report(agent, "; ".join(problems))
             report["raw_output"] = original
 
     findings = [f for f in report.get("findings", []) if isinstance(f, dict)]
@@ -304,8 +304,8 @@ def main() -> None:
     if report.get("verdict") == "pass" and findings:
         report["verdict"] = "findings"
 
-    marker = f"<!-- pr-agent:{persona}{':' + target_env if target_env else ''} -->"
-    markdown = render(report, persona, marker, note)
+    marker = f"<!-- pr-agent:{agent}{':' + target_env if target_env else ''} -->"
+    markdown = render(report, agent, marker, note)
 
     json_path = context_dir / "report.json"
     md_path = context_dir / "report.md"

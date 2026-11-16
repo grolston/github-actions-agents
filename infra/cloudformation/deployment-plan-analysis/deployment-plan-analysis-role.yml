@@ -5,9 +5,9 @@ Description: >-
   and reads CloudFormation change sets for allowed stacks and the AWS
   Pricing API. No resource data or secrets.
 
-# This is the persona's only AWS identity: it invokes Claude on Bedrock and
-# makes the persona's read-only AWS CLI calls. Deploy it in every account the
-# persona inspects; Bedrock (with access to the Anthropic model) must be
+# This is the agent's only AWS identity: it invokes Claude on Bedrock and
+# makes the agent's read-only AWS CLI calls. Deploy it in every account the
+# agent inspects; Bedrock (with access to the Anthropic model) must be
 # usable in that account. It can never read secret values or data contents.
 
 Parameters:
@@ -92,7 +92,7 @@ Conditions:
 
 Resources:
 
-  PersonaRole:
+  AgentRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
@@ -207,5 +207,5 @@ Resources:
 
 Outputs:
   RoleArn:
-    Description: Persona role (Bedrock + read-only checks). Store as the AWS_PR_AGENT_PLAN_ROLE_ARN secret (repository or environment).
-    Value: !GetAtt PersonaRole.Arn
+    Description: Agent role (Bedrock + read-only checks). Store as the AWS_PR_AGENT_PLAN_ROLE_ARN secret (repository or environment).
+    Value: !GetAtt AgentRole.Arn

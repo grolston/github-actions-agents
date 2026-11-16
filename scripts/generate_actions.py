@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate .github/actions/<persona>/action.yml for every persona from one template.
+"""Generate .github/actions/<agent>/action.yml for every agent from one template.
 
-Each persona is its own GitHub Action (uses: grolston/github-actions-agents/.github/actions/<persona>@v1)
+Each agent is its own GitHub Action (uses: grolston/github-actions-agents/.github/actions/<agent>@v1)
 but the step wiring lives in scripts/action.template.yml so the actions never drift.
 
   python3 scripts/generate_actions.py           # write all action.yml files
@@ -18,17 +18,17 @@ ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE = ROOT / "scripts" / "action.template.yml"
 ACTIONS = ROOT / ".github" / "actions"
 
-def personas() -> list[Path]:
-    return sorted(p.parent for p in ACTIONS.glob("*/persona.json"))
+def agents() -> list[Path]:
+    return sorted(p.parent for p in ACTIONS.glob("*/agent.json"))
 
 
-def render(persona_dir: Path) -> str:
-    meta = json.loads((persona_dir / "persona.json").read_text())
-    name = persona_dir.name
+def render(agent_dir: Path) -> str:
+    meta = json.loads((agent_dir / "agent.json").read_text())
+    name = agent_dir.name
     if not isinstance(meta.get("aws_cli"), bool):
-        raise SystemExit(f"{name}: persona.json needs \"aws_cli\": true or false")
+        raise SystemExit(f"{name}: agent.json needs \"aws_cli\": true or false")
     if not meta.get("role_template"):
-        raise SystemExit(f"{name}: persona.json needs role_template (every persona has its own IAM role)")
+        raise SystemExit(f"{name}: agent.json needs role_template (every agent has its own IAM role)")
     flags = {f"input:{i}" for i in meta.get("inputs", [])}
 
     out, stack = [], []
@@ -46,7 +46,7 @@ def render(persona_dir: Path) -> str:
         raise SystemExit("unbalanced #@BEGIN/#@END in template")
 
     values = {
-        "PERSONA": name,
+        "AGENT": name,
         "TITLE": meta["title"],
         "DESCRIPTION": meta["description"],
         "ICON": meta.get("icon", "shield"),
@@ -60,7 +60,7 @@ def render(persona_dir: Path) -> str:
 def main() -> None:
     check = "--check" in sys.argv
     stale = []
-    for d in personas():
+    for d in agents():
         target = d / "action.yml"
         text = render(d)
         if check:

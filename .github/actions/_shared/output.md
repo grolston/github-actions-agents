@@ -1,14 +1,14 @@
 ## Output
 
 Return your result ONLY as the structured output defined by the provided
-JSON schema. Set `persona` to `{{PERSONA}}`.
+JSON schema. Set `agent` to `{{AGENT}}`.
 
 - `verdict`: `pass` (nothing to report), `findings` (one or more findings),
   or `error` (the inputs were missing, unreadable, or so incomplete that a
   review would be a guess).
 - `findings[].id`: short stable ID, e.g. `QP-001`.
 - `findings[].severity`: `critical`, `important`, or `suggestion`, per your
-  persona's severity rules.
+  severity rules above.
 - `findings[].file`: `path:line` of the changed line that introduces the
   issue (new-file line numbers, as in the diff). Each finding becomes a
   review conversation on that line that someone must resolve, so point at

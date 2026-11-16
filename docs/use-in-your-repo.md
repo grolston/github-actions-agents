@@ -45,15 +45,15 @@ All templates are in `infra/cloudformation/`.
 
 - **One OIDC provider per AWS account.** It lets GitHub jobs assume roles in
   that account. Every role in the account uses it.
-- **One IAM role per persona.** It's the persona's only AWS identity: Claude
+- **One IAM role per agent.** It's the agent's only AWS identity: Claude
   Code uses it to call Bedrock, and the agent uses it for its read-only AWS
   CLI checks. Each job assumes it once.
 
-Deploy only the roles for the personas you use:
+Deploy only the roles for the agents you use:
 
 | Template | Deploy where | Secret to store |
 |---|---|---|
-| `github-oidc-provider.yml` | Once per AWS account that has a persona role. Skip it if the account already has a `token.actions.githubusercontent.com` provider. | — |
+| `github-oidc-provider.yml` | Once per AWS account that has an agent role. Skip it if the account already has a `token.actions.githubusercontent.com` provider. | — |
 | `quota-preflight/quota-preflight-role.yml` | Each account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
 | `prerequisite-validator/prerequisite-validator-role.yml` | Each account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
 | `deployment-plan-analysis/deployment-plan-analysis-role.yml` | The account whose change sets it reads (or any account with Bedrock if it only reads plan files) | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
@@ -64,7 +64,7 @@ Deploy only the roles for the personas you use:
 The last three review code only and make no AWS CLI calls. Their roles can
 only invoke Claude, so they don't need to be in the account you deploy to.
 
-Because each persona role calls Bedrock, Bedrock must be usable in every
+Because each agent role calls Bedrock, Bedrock must be usable in every
 account where you deploy one (see [Make sure the account can use the
 model](#make-sure-the-account-can-use-the-model)), and model usage is billed
 to that account.
@@ -88,7 +88,7 @@ Two common setups:
   store the ARNs as repository secrets.
 - **One account per environment (dev, prod...).** Create a GitHub
   environment per account, e.g. `pr-agents-dev` and `pr-agents-prod`. Deploy
-  each account's persona roles with `TrustMode=environment` and
+  each account's agent roles with `TrustMode=environment` and
   `GitHubEnvironmentName=pr-agents-<env>`, and store the ARNs as environment
   secrets with the same names in each environment. Use dedicated
   environments so deploy approvals don't block PR checks.
@@ -135,7 +135,7 @@ aws cloudformation describe-stacks --stack-name github-pr-agent-quota-preflight 
 
 ### Make sure the account can use the model
 
-In every account with a persona role, open the Bedrock console and confirm the Anthropic
+In every account with an agent role, open the Bedrock console and confirm the Anthropic
 model you'll use (default `us.anthropic.claude-opus-5-5`) is available. The
 first Anthropic model in an account needs a one-time use-case form; if the
 console still shows a **Model access** page, enable the model there. A `us.`
@@ -165,7 +165,7 @@ adjust the region, environment names, and `paths:` filter:
   each agent once per environment, with environment secrets.
 - [`deployment-plan-analysis.yml`](../examples/workflows/deployment-plan-analysis.yml):
   your own job builds the change sets; the agent analyzes them with its
-  persona role, which can't create or run change sets.
+  agent role, which can't create or run change sets.
 - [`pr-agents-code.yml`](../examples/workflows/pr-agents-code.yml):
   maintainability and conventions agents on every PR. The conventions
   agent enforces only what is written in `AGENTS.md` and `org-rules`.
@@ -223,14 +223,14 @@ Set `thread-on: suggestion` to open threads for every finding, or
 
 ## 6. Give each agent its own name (optional)
 
-By default every agent posts as `github-actions[bot]`, and the persona is
+By default every agent posts as `github-actions[bot]`, and the agent is
 named in each comment. To post under an app's name instead, mint a GitHub
 App token and pass it as `github-token`.
 
 1. **Create the app** (org owner): Org settings → Developer settings →
    GitHub Apps → New GitHub App.
    - Name: e.g. `pr-agents` (comments show as `pr-agents[bot]`). Create one
-     app per persona if you want a name per persona.
+     app per agent if you want a name per agent.
    - Homepage URL: any URL, e.g. the agents repository.
    - Webhook: untick **Active**.
    - Repository permissions: **Pull requests: Read and write**, **Contents:
@@ -269,7 +269,7 @@ itself never gets tools that write to GitHub.
 Open a test PR that changes an infrastructure file (it has to match the
 workflow's `paths:` filter), then check:
 
-- [ ] Each agent's job starts and passes **Assume persona role**.
+- [ ] Each agent's job starts and passes **Assume agent role**.
 - [ ] The PR gets one summary comment per agent (per environment).
 - [ ] Findings at or above `thread-on` appear as review threads in **Files
       changed**.
@@ -287,7 +287,7 @@ workflow's `paths:` filter), then check:
 | `Unable to resolve action ... repository not found` | The owner or repository name in `uses:` is wrong, the ref after `@` doesn't exist in the agents repository, or you use a private copy that isn't shared with your org (step 1). |
 | `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, or `id-token: write` is missing. |
 | `Credentials could not be loaded` | The secret is empty in this context: an environment secret read by a job without `environment:`, or the reverse. |
-| Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the persona role. |
+| Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the agent role. |
 | `Resource not accessible by integration` when commenting | The job is missing `pull-requests: write`, or the PR is from a fork or Dependabot (their token is read-only). |
 | Verdict `error`, "agent produced no structured output" | The agent ran out of turns or hit an error; see the agent step's log. Raise `max-turns` if it was still working. |
 | Threads are created but never auto-resolve, and **Sync review threads** warns that threads "could not be resolved or reopened" | The token isn't allowed to resolve review threads; the warning quotes GitHub's error. Resolve them by hand, or pass a `github-token` that is allowed to. |

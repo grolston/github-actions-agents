@@ -13,7 +13,7 @@ model output). For every finding at or above THREAD_ON severity:
   the finding's changed line, else on its file, else on the first file the
   PR changes (so every finding is a conversation that needs resolution)
 
-Open threads owned by this persona/environment whose finding is no longer
+Open threads owned by this agent/environment whose finding is no longer
 reported are replied to and resolved. Nothing is resolved when the report
 is an error, so a failed run never clears real findings. If the token is
 not allowed to resolve or reopen a thread, the run warns and carries on
@@ -118,7 +118,7 @@ UNRESOLVE = "mutation($id: ID!) { unresolveReviewThread(input: {threadId: $id}) 
 
 
 def existing_threads(gh: GitHub, repo: str, number: int, owner_key: str) -> dict[str, dict]:
-    """Return {fingerprint: thread} for threads this persona/environment opened."""
+    """Return {fingerprint: thread} for threads this agent/environment opened."""
     owner, name = repo.split("/", 1)
     threads: dict[str, dict] = {}
     after = None
@@ -232,9 +232,9 @@ def fingerprint(finding: dict, path: str) -> str:
 # Thread bodies
 # ---------------------------------------------------------------------------
 
-def thread_body(finding: dict, persona: str, marker: str, location_note: str) -> str:
+def thread_body(finding: dict, agent: str, marker: str, location_note: str) -> str:
     sev = finding.get("severity", "")
-    head = f"{SEVERITY_ICON.get(sev, '')} **{cell(sev).upper()}** · `[{persona}] {cell(finding.get('id'))}` · `{cell(finding.get('category'))}`"
+    head = f"{SEVERITY_ICON.get(sev, '')} **{cell(sev).upper()}** · `[{agent}] {cell(finding.get('id'))}` · `{cell(finding.get('category'))}`"
     if finding.get("resource"):
         head += f" · `{cell(finding.get('resource'))}`"
     if finding.get("environment"):
@@ -258,7 +258,7 @@ def thread_body(finding: dict, persona: str, marker: str, location_note: str) ->
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    persona = env("PERSONA")
+    agent = env("AGENT")
     target_env = env("TARGET_ENVIRONMENT")
     repo = env("REPO")
     number = int(env("PR_NUMBER"))
@@ -271,7 +271,7 @@ def main() -> None:
         sys.exit(1)
     threshold = SEVERITY_ORDER[threshold_name]
 
-    owner_key = persona + (f":{target_env}" if target_env else "")
+    owner_key = agent + (f":{target_env}" if target_env else "")
     gh = GitHub(env("GH_TOKEN"))
     diff_lines = parse_diff((context_dir / "diff.patch").read_text(errors="replace"))
     files = changed_files(context_dir / "changed-files.tsv")
@@ -330,7 +330,7 @@ def main() -> None:
             print(f"::warning::No file to anchor finding {finding.get('id')}; skipped.")
             skipped += 1
             continue
-        comment["body"] = thread_body(finding, persona, marker, note)
+        comment["body"] = thread_body(finding, agent, marker, note)
         try:
             gh.rest("POST", f"repos/{repo}/pulls/{number}/comments", comment)
         except RuntimeError as exc:

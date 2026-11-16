@@ -1,7 +1,7 @@
 # Create your own agents repository
 
 This guide is for teams that want their own copy of this repository: their
-own org name, their own personas, and their own release tags. If you only
+own org name, their own agents, and their own release tags. If you only
 want to *use* the agents in an application repository, see
 [use-in-your-repo.md](use-in-your-repo.md).
 
@@ -36,7 +36,7 @@ grep -rl --exclude-dir=.git -e 'grolston/github-actions-agents' -e 'author: grol
       -e 's#author: grolston#author: <your-org>#g'
 ```
 
-Then regenerate the persona actions (their `author:` comes from
+Then regenerate the agent actions (their `author:` comes from
 `scripts/action.template.yml`) and confirm nothing is left:
 
 ```bash
@@ -102,9 +102,9 @@ shellcheck .github/actions/_shared/scripts/*.sh
 
 ## 5. Release and versioning
 
-Consumers reference a persona action as
-`<your-org>/<your-agents-repo>/.github/actions/<persona>@<ref>`. All
-personas share the repository's tags.
+Consumers reference an agent action as
+`<your-org>/<your-agents-repo>/.github/actions/<agent>@<ref>`. All
+agents share the repository's tags.
 
 The examples use `@v1`, which only resolves once that tag exists. Until
 then, use `@main` or a commit SHA.
@@ -124,13 +124,13 @@ git tag -fa v1 -m "v1" "v1.0.0^{}" && git push -f origin v1
 Use a new major tag (`v2`) when you rename or remove an input, change an
 output, or change the report schema in a way that breaks consumers.
 
-## 6. Add or change personas
+## 6. Add or change agents
 
-Each persona is one directory under `.github/actions/<name>/`. The
+Each agent is one directory under `.github/actions/<name>/`. The
 `action.yml` in it is generated, so edit the source files and regenerate.
 
 1. Create `.github/actions/<name>/` with:
-   - `persona.json`:
+   - `agent.json`:
 
      ```json
      {
@@ -143,25 +143,25 @@ Each persona is one directory under `.github/actions/<name>/`. The
      }
      ```
 
-     `aws_cli` decides whether the agent gets AWS CLI tools. Every persona
+     `aws_cli` decides whether the agent gets AWS CLI tools. Every agent
      has its own IAM role either way, because Claude runs on Bedrock with
      it.
-   - `prompt.md`: what the persona checks and how it rates severity. It can
+   - `prompt.md`: what the agent checks and how it rates severity. It can
      use `{{CONTEXT_DIR}}`, `{{TARGET_REGION}}`, `{{TARGET_ENVIRONMENT}}`,
-     `{{REPO}}`, `{{PR_NUMBER}}`, `{{PERSONA}}`, `{{ORG_RULES_VERSION}}`,
+     `{{REPO}}`, `{{PR_NUMBER}}`, `{{AGENT}}`, `{{ORG_RULES_VERSION}}`,
      and `{{COST_THRESHOLD_USD}}`.
-   - `schema.json`: the report contract. Copy an existing persona's schema
-     and keep `persona`, `verdict`, `findings` (with `id`, `severity`,
+   - `schema.json`: the report contract. Copy an existing agent's schema
+     and keep `agent`, `verdict`, `findings` (with `id`, `severity`,
      `category`, `resource`, `description`, `recommendation`, `evidence`,
      optional `file`), and `summary_markdown`. No single quotes anywhere in
      the file.
    - `aws-allowed-tools.txt` (only with `"aws_cli": true`): one read-only
      Claude Code rule per line, e.g. `Bash(aws ec2 describe-vpcs *)`.
 2. Add its role at `infra/cloudformation/<name>/<name>-role.yml`. Copy an
-   existing persona role template so it keeps the OIDC trust parameters, the
+   existing agent role template so it keeps the OIDC trust parameters, the
    `bedrock-invoke-anthropic` policy, and the `deny-data-reads` policy. Then
-   replace the persona's read policy with only the read APIs that match
-   `aws-allowed-tools.txt`, or remove it for a persona with
+   replace the agent's read policy with only the read APIs that match
+   `aws-allowed-tools.txt`, or remove it for an agent with
    `"aws_cli": false`.
 3. Generate the action and check it:
 
@@ -169,9 +169,9 @@ Each persona is one directory under `.github/actions/<name>/`. The
    python3 scripts/generate_actions.py && python3 scripts/generate_actions.py --check
    ```
 
-4. Add the persona to the table in the README and, if useful, to an example
+4. Add the agent to the table in the README and, if useful, to an example
    workflow.
 
 Shared behaviour lives in `.github/actions/_shared/` (prompt sections, tool
 allow and deny lists, scripts) and in `scripts/action.template.yml` (the
-step wiring for every action). A change there affects every persona.
+step wiring for every action). A change there affects every agent.

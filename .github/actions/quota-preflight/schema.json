@@ -4,14 +4,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "persona",
+    "agent",
     "verdict",
     "quotas",
     "findings",
     "summary_markdown"
   ],
   "properties": {
-    "persona": {
+    "agent": {
       "type": "string",
       "const": "quota-preflight"
     },

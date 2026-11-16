@@ -4,14 +4,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "persona",
+    "agent",
     "verdict",
     "files_reviewed",
     "findings",
     "summary_markdown"
   ],
   "properties": {
-    "persona": {
+    "agent": {
       "type": "string",
       "const": "workflow-security"
     },

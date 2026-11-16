@@ -1,4 +1,4 @@
-# Read-only change set and pricing lookups; mirrors the persona role's policy.
+# Read-only change set and pricing lookups; mirrors the agent role's policy.
 # Mirrors infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml.
 Bash(aws cloudformation describe-change-set *)
 Bash(aws cloudformation describe-stacks *)

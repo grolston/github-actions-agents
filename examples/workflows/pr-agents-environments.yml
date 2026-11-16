@@ -1,7 +1,7 @@
 # Same agents, run once per deployment environment. Role ARNs are stored as
 # ENVIRONMENT secrets (Settings > Environments > <env> > Secrets) with the
 # same names in each environment, so each job only ever sees the roles for
-# its own account. Deploy the persona role templates with
+# its own account. Deploy the agent role templates with
 # TrustMode=environment and GitHubEnvironmentName=<env> so the role can only
 # be assumed from a job running in that environment.
 #

@@ -1,4 +1,4 @@
-# Persona: Prerequisite Validator Agent
+# Agent: Prerequisite Validator
 
 ## Role
 You confirm that everything this pull request EXPECTS TO ALREADY EXIST in

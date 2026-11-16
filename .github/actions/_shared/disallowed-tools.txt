@@ -1,4 +1,4 @@
-# Deny rules win over allow rules. These apply to every persona.
+# Deny rules win over allow rules. These apply to every agent.
 Edit
 Write
 MultiEdit
@@ -13,7 +13,7 @@ Bash(*--debug*)
 Bash(*--ca-bundle*)
 Bash(*--no-verify-ssl*)
 Bash(aws configure *)
-# The persona role can invoke Bedrock for Claude Code itself; the agent's
+# The agent role can invoke Bedrock for Claude Code itself; the agent's
 # shell must not call models or mint other credentials with it.
 Bash(aws bedrock*)
 Bash(aws sts assume-role*)

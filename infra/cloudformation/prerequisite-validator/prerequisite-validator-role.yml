@@ -5,9 +5,9 @@ Description: >-
   confirms referenced SSM parameters, secrets, IDs, and ARNs exist without
   reading any parameter or secret values (metadata only).
 
-# This is the persona's only AWS identity: it invokes Claude on Bedrock and
-# makes the persona's read-only AWS CLI calls. Deploy it in every account the
-# persona inspects; Bedrock (with access to the Anthropic model) must be
+# This is the agent's only AWS identity: it invokes Claude on Bedrock and
+# makes the agent's read-only AWS CLI calls. Deploy it in every account the
+# agent inspects; Bedrock (with access to the Anthropic model) must be
 # usable in that account. It can never read secret values or data contents.
 
 Parameters:
@@ -85,7 +85,7 @@ Conditions:
 
 Resources:
 
-  PersonaRole:
+  AgentRole:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Ref RoleName
@@ -239,5 +239,5 @@ Resources:
 
 Outputs:
   RoleArn:
-    Description: Persona role (Bedrock + read-only checks). Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
-    Value: !GetAtt PersonaRole.Arn
+    Description: Agent role (Bedrock + read-only checks). Store as the AWS_PR_AGENT_PREREQ_ROLE_ARN secret (repository or environment).
+    Value: !GetAtt AgentRole.Arn

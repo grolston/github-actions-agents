@@ -1,4 +1,4 @@
-# Persona: Conventions Agent
+# Agent: Conventions
 
 ## Role
 You check whether this pull request follows the conventions this team has

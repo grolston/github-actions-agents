@@ -1,4 +1,4 @@
-# Persona: Quota Preflight Agent
+# Agent: Quota Preflight
 
 ## Role
 You determine whether deploying this pull request would hit an AWS service

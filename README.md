@@ -1,6 +1,7 @@
 # GitHub Actions PR Agents
 
-Shareable, single-purpose AI review agents for pull requests. Each **persona**
+Shareable, single-purpose AI review agents for pull requests. Each **agent**
+has one function, plus the tools and permissions that function needs, and
 is its own GitHub Action that you add to a target repository's workflows. It
 does exactly one job, runs Claude on Amazon Bedrock through
 [`anthropics/claude-code-action`](https://github.com/anthropics/claude-code-action),
@@ -23,10 +24,10 @@ Bedrock.
 ## How it works
 
 ```
-pull_request ─► job (one per persona, only that persona's secrets)
+pull_request ─► job (one per agent, only that agent's secrets)
                  ├─ gather context: PR metadata, changed files, diff, AGENTS.md from the BASE branch
-                 ├─ OIDC ─► this persona's IAM role (Claude on Bedrock + its read-only AWS checks)
-                 ├─ claude-code-action: persona prompt + allowlisted read-only tools + JSON schema output
+                 ├─ OIDC ─► this agent's IAM role (Claude on Bedrock + its read-only AWS checks)
+                 ├─ claude-code-action: agent prompt + allowlisted read-only tools + JSON schema output
                  ├─ validate + sanitize the JSON report ─► job summary + one PR comment (updated in place)
                  ├─ one resolvable review thread per finding (deduplicated; auto-resolved when fixed)
                  └─ fail the check if severity ≥ fail-on
@@ -34,21 +35,21 @@ pull_request ─► job (one per persona, only that persona's secrets)
 
 Least privilege is enforced in three layers:
 
-1. **IAM**: each persona has exactly one role, its own AWS identity
+1. **IAM**: each agent has exactly one role, its own AWS identity
    (separate CloudFormation template). It can invoke Anthropic models on
-   Bedrock and call only the read APIs that persona needs, with an explicit
+   Bedrock and call only the read APIs that agent needs, with an explicit
    `Deny` on reading secret values, decrypting, and reading data contents.
    See [Roles and OIDC](#roles-and-oidc).
 2. **OIDC trust**: roles trust only `pull_request` jobs and/or a named GitHub
    environment, optionally only a specific workflow file
    (`job_workflow_ref`).
 3. **Agent tools**: Claude Code runs with an allowlist of exact read-only
-   `aws` subcommands per persona (`.github/actions/<persona>/aws-allowed-tools.txt`), no
+   `aws` subcommands per agent (`.github/actions/<agent>/aws-allowed-tools.txt`), no
    Edit/Write/Web tools, and deny rules for `--endpoint-url`, `--debug`,
    `aws configure`, `aws bedrock*`, `aws sts assume-role*`, reading
    `~/.aws` or `/proc`, and the usual ways of printing credentials from the
    environment. As a backstop, the role's credential values are removed
-   from the report before it is posted. A persona with `"aws_cli": false`
+   from the report before it is posted. An agent with `"aws_cli": false`
    gets no AWS CLI permissions at all.
 
 ## Roles and OIDC
@@ -56,15 +57,15 @@ Least privilege is enforced in three layers:
 - **One GitHub OIDC provider per AWS account**
   (`infra/cloudformation/github-oidc-provider.yml`). It is the trust link
   between GitHub and that account; every role in the account uses it.
-- **One IAM role per persona** (`infra/cloudformation/<persona>/<persona>-role.yml`).
-  It is the persona's only identity: Claude Code uses it to call Bedrock,
+- **One IAM role per agent** (`infra/cloudformation/<agent>/<agent>-role.yml`).
+  It is the agent's only identity: Claude Code uses it to call Bedrock,
   and the agent's allowlisted `aws` commands use it for read-only checks.
-  CloudTrail shows each persona separately (role name plus session
-  `pr-agent-<persona>-<run id>`).
+  CloudTrail shows each agent separately (role name plus session
+  `pr-agent-<agent>-<run id>`).
 - **Each job assumes one role, once**, through OIDC, and clears the
   credentials at the end of the action.
 
-| Persona | Its role can |
+| Agent | Its role can |
 |---|---|
 | quota-preflight | invoke Claude; read Service Quotas, usage metrics, resource counts |
 | prerequisite-validator | invoke Claude; read resource metadata (never parameter or secret values) |
@@ -72,14 +73,14 @@ Least privilege is enforced in three layers:
 | maintainability, conventions, workflow-security (`"aws_cli": false`) | invoke Claude only |
 
 Because the role calls Bedrock, Bedrock (with access to the Anthropic model)
-must be usable in **every account where a persona role is deployed**, and
+must be usable in **every account where an agent role is deployed**, and
 model usage is billed to that account.
 
 Why this is safe: the role is read-only, Bedrock access is limited to
 Anthropic models, and the agent's shell is denied `aws bedrock*` and
 `sts` credential calls, so the Bedrock permission is used only by Claude
-Code itself. Giving each persona its own role keeps permissions and audit
-trails separate per persona.
+Code itself. Giving each agent its own role keeps permissions and audit
+trails separate per agent.
 
 Untrusted PR content (title, body, diff) is written to files and never
 interpolated into the prompt or shell. Repo guidance is read from the base
@@ -92,7 +93,7 @@ is schema-checked and sanitized (no @mentions, no HTML) before it is posted.
    repository can use its actions. A private copy has to be shared first:
    see [create-your-own.md](docs/create-your-own.md#3-let-other-repositories-use-the-actions).
 2. **Deploy the AWS roles** from `infra/cloudformation/`: the OIDC provider
-   (once per account) and one role per persona you use.
+   (once per account) and one role per agent you use.
 3. **Store the role ARNs** as repository or environment secrets in the app
    repository.
 4. **Add a workflow** from [`examples/workflows/`](examples/workflows/) with
@@ -106,7 +107,7 @@ Step-by-step guides:
   first-run checklist, and troubleshooting.
 - [**Create your own agents repository**](docs/create-your-own.md): copy
   this repository under your org, share it, release and tag it, and add
-  personas.
+  agents.
 
 Minimal job:
 
@@ -135,15 +136,15 @@ secrets to untrusted fork code. Fork PRs cannot get OIDC tokens under
 
 ## Action reference
 
-All persona actions share these inputs (each action's own `action.yml` is
+All agent actions share these inputs (each action's own `action.yml` is
 the source of truth):
 
 | Input | Default | Description |
 |---|---|---|
-| `aws-region` | — | Region the persona inspects. |
-| `role-arn` | — | **Required.** This persona's IAM role, used for Bedrock and its read-only checks. |
+| `aws-region` | — | Region the agent inspects. |
+| `role-arn` | — | **Required.** This agent's IAM role, used for Bedrock and its read-only checks. |
 | `bedrock-region` | `aws-region` | Region for Bedrock calls (the agent passes `aws-region` on its own AWS CLI calls). |
-| `target-environment` | `""` | Label (dev/prod...). One PR comment per persona per environment. |
+| `target-environment` | `""` | Label (dev/prod...). One PR comment per agent per environment. |
 | `model` | `us.anthropic.claude-opus-5-5` | Bedrock model / inference profile ID. |
 | `max-turns` | `60` | Agent turn limit. |
 | `comment` | `true` | Post/update the report as a PR comment. |
@@ -177,7 +178,7 @@ depend on the model choosing to comment:
   file; if the file isn't in the PR (an account quota, a missing SSM
   parameter), it goes on the first changed file and names the real
   location.
-- **No duplicates.** Each thread carries a hidden marker with the persona,
+- **No duplicates.** Each thread carries a hidden marker with the agent,
   environment, and a fingerprint of the finding (category + resource +
   file), so re-runs on new pushes reuse the existing thread.
 - **Auto-resolve.** When a later run no longer reports a finding, the agent
@@ -186,7 +187,7 @@ depend on the model choosing to comment:
   accepted). A failed run (`verdict: error`) never resolves anything. If
   the token isn't allowed to resolve or reopen threads, the run logs a
   warning and leaves that to a person; it doesn't fail the check.
-- At most 25 new threads per run per persona.
+- At most 25 new threads per run per agent.
 
 To make merges wait on these conversations, enable **Require conversation
 resolution before merging** in the branch protection rule or ruleset for the
@@ -196,39 +197,39 @@ target branch. The action can't turn that on for you.
 
 ```
 .github/actions/
-  quota-preflight/          one directory per persona = one action
+  quota-preflight/          one directory per agent = one action
     action.yml              GENERATED from scripts/action.template.yml
-    persona.json            title, description, aws_cli, role template, extra inputs
-    prompt.md               persona instructions
+    agent.json              title, description, aws_cli, role template, extra inputs
+    prompt.md               agent instructions
     schema.json             structured report contract
     aws-allowed-tools.txt   read-only aws CLI rules (granted when aws_cli is true)
   prerequisite-validator/
   deployment-plan-analysis/
-  maintainability/          code-only personas: no aws-allowed-tools.txt
+  maintainability/          code-only agents: no aws-allowed-tools.txt
   conventions/
   workflow-security/
-  _shared/                  prompt sections + tool allow/deny lists used by every persona
+  _shared/                  prompt sections + tool allow/deny lists used by every agent
     scripts/                context gathering, prompt build, report render, comment upsert, review thread sync
 infra/cloudformation/
   github-oidc-provider.yml  shared: once per account
-  <persona>/<persona>-role.yml   the persona's IAM role: Bedrock + its read-only checks
+  <agent>/<agent>-role.yml   the agent's IAM role: Bedrock + its read-only checks
 scripts/                    action.template.yml + generate_actions.py (repo tooling)
 examples/workflows/         workflows to copy into target repositories
 docs/                       setup guides
 ```
 
-## Adding a persona
+## Adding an agent
 
-Create `.github/actions/<name>/` with `persona.json`, `prompt.md`,
+Create `.github/actions/<name>/` with `agent.json`, `prompt.md`,
 `schema.json`, and (if it uses the AWS CLI) `aws-allowed-tools.txt`; add its
 role at `infra/cloudformation/<name>/<name>-role.yml`; then run
 `python3 scripts/generate_actions.py`. Details:
-[create-your-own.md → Add or change personas](docs/create-your-own.md#6-add-or-change-personas).
+[create-your-own.md → Add or change agents](docs/create-your-own.md#6-add-or-change-agents).
 
 ## Versioning
 
-Consumers pin each persona action to a release tag
-(`.../.github/actions/quota-preflight@v1`) or a commit SHA; all personas are
+Consumers pin each agent action to a release tag
+(`.../.github/actions/quota-preflight@v1`) or a commit SHA; all agents are
 versioned together with the repository. `v1` follows the latest compatible
 release; pin `v1.0.0` or a SHA if you want updates only when you choose.
 How to cut releases:

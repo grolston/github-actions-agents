@@ -4,7 +4,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "persona",
+    "agent",
     "verdict",
     "intent_match",
     "environments",
@@ -12,7 +12,7 @@
     "summary_markdown"
   ],
   "properties": {
-    "persona": {
+    "agent": {
       "type": "string",
       "const": "deployment-plan-analysis"
     },

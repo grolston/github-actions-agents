@@ -1,5 +1,5 @@
-# Tools every persona may use. One Claude Code permission rule per line.
-# Persona-specific rules live in .github/actions/<persona>/allowed-tools.txt and aws-allowed-tools.txt.
+# Tools every agent may use. One Claude Code permission rule per line.
+# Agent-specific rules live in .github/actions/<agent>/allowed-tools.txt and aws-allowed-tools.txt.
 Read
 Glob
 Grep

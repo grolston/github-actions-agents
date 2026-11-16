@@ -1,4 +1,4 @@
-# Persona: Workflow Security Agent
+# Agent: Workflow Security
 
 ## Role
 You review changes to GitHub Actions workflows and actions for ways they

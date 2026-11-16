@@ -1,2 +1,2 @@
-# Granted to every persona with "aws_cli": true.
+# Granted to every agent with "aws_cli": true.
 Bash(aws sts get-caller-identity *)

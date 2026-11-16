@@ -1,6 +1,6 @@
 # Deployment plan analysis. A deploy-tooling job produces change sets (it
 # uses YOUR existing deploy role, not an agent role) and uploads them; the
-# agent job then analyzes the files with the persona's own role
+# agent job then analyzes the files with the agent's own role
 # (infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml),
 # which can invoke Claude on Bedrock and read change sets and pricing, but
 # can't create or execute change sets.
@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write        # OIDC -> persona role
+      id-token: write        # OIDC -> agent role
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
