@@ -1,0 +1,8 @@
+{
+  "title": "Conventions",
+  "description": "Checks the change against the written conventions in the repository guidance file and org rules (naming, layout, tagging, required patterns). It enforces only rules you wrote down. Code only; no AWS access.",
+  "icon": "book-open",
+  "aws_cli": false,
+  "role_template": "infra/cloudformation/conventions/conventions-role.yml",
+  "inputs": []
+}
