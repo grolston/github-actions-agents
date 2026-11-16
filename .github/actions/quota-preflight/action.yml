@@ -4,7 +4,7 @@
 name: "PR Agent: Quota Preflight"
 description: >-
   Finds resources in the change that consume AWS service quotas and checks current usage and headroom in the target account.
-author: platformr
+author: grolston
 branding:
   icon: activity
   color: orange

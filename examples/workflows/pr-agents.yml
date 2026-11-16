@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: platformr/github-actions-agents/.github/actions/quota-preflight@v1
+      - uses: grolston/github-actions-agents/.github/actions/quota-preflight@v1
         with:
           aws-region: us-east-1
           target-environment: dev
@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
+      - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
         with:
           aws-region: us-east-1
           target-environment: dev

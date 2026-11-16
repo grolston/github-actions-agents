@@ -5,14 +5,13 @@ GitHub prerequisites, the AWS roles, the secrets, the workflow, and a
 first-run check. To run your own copy of the agents repository instead, see
 [create-your-own.md](create-your-own.md).
 
-Throughout, `platformr/github-actions-agents` is the agents repository and
+Throughout, `grolston/github-actions-agents` is the agents repository and
 `<org>/<app-repo>` is the repository whose PRs you want reviewed.
 
 ## What you need
 
 | Who | What |
 |---|---|
-| Admin of the agents repository | One-time: share its actions with the organization (step 1). |
 | Someone with AWS access | Deploy the CloudFormation stacks (step 2). |
 | Admin of the app repository | Add secrets and the workflow (steps 3–4); optionally require conversation resolution (step 5). |
 
@@ -22,13 +21,14 @@ its own name on the PR (step 6).
 
 ## 1. GitHub prerequisites
 
-**Access to the actions (private agents repository only).** In
-`platformr/github-actions-agents` → **Settings → Actions → General →
-Access**, choose **Accessible from repositories in the 'platformr'
-organization**. Without this, workflows fail with "repository not found".
+**Access to the actions.** `grolston/github-actions-agents` is public, so
+any repository can use its actions and there is nothing to share. If you
+run a private copy instead, share it first
+([create-your-own.md, step 3](create-your-own.md#3-let-other-repositories-use-the-actions));
+otherwise workflows fail with "repository not found".
 
 **Allowed actions (only if your org restricts them).** In **Org settings →
-Actions → General → Policies**, allow `platformr/github-actions-agents/*`,
+Actions → General → Policies**, allow `grolston/github-actions-agents/*`,
 `anthropics/claude-code-action@*`, `aws-actions/configure-aws-credentials@*`,
 and `actions/checkout@*` (plus `actions/upload-artifact@*` and
 `actions/download-artifact@*` for the plan-analysis example).
@@ -175,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
+      - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
         with:
           aws-region: us-east-1
           target-environment: dev
@@ -240,7 +240,7 @@ App token and pass it as `github-token`.
              private-key: ${{ secrets.PR_AGENT_APP_PRIVATE_KEY }}
          - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
            with: { persist-credentials: false }
-         - uses: platformr/github-actions-agents/.github/actions/prerequisite-validator@v1
+         - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
            with:
              github-token: ${{ steps.app-token.outputs.token }}
              # ...same inputs as before
@@ -273,7 +273,7 @@ workflow's `paths:` filter), then check:
 
 | Symptom | Likely cause |
 |---|---|
-| `Unable to resolve action ... repository not found` | The agents repository is private and not shared with the org (step 1), or the ref after `@` doesn't exist in the agents repository. |
+| `Unable to resolve action ... repository not found` | The owner or repository name in `uses:` is wrong, the ref after `@` doesn't exist in the agents repository, or you use a private copy that isn't shared with your org (step 1). |
 | `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, or `id-token: write` is missing. |
 | `Credentials could not be loaded` | The secret is empty in this context: an environment secret read by a job without `environment:`, or the reverse. |
 | Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the persona role. |

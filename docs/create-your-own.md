@@ -16,13 +16,12 @@ Pick one:
   ```bash
   gh repo create <your-org>/<your-agents-repo> --private --clone
   cd <your-agents-repo>
-  git pull https://github.com/platformr/github-actions-agents.git main
+  git pull https://github.com/grolston/github-actions-agents.git main
   git push -u origin main
   ```
 
-- **Fork it** if you want to pull future changes from upstream. Forks of a
-  private repository stay private and are tied to the parent's access, so a
-  copy is usually simpler for another organization.
+- **Fork it** if you want to pull future changes from upstream. A fork of
+  a public repository is public; use a copy if yours must be private.
 
 ## 2. Replace the owner and repository name
 
@@ -31,10 +30,10 @@ workflows, and the action metadata. Replace them in one pass (macOS `sed`
 shown; on Linux drop the `''` after `-i`):
 
 ```bash
-grep -rl --exclude-dir=.git -e 'platformr/github-actions-agents' -e 'author: platformr' . \
+grep -rl --exclude-dir=.git -e 'grolston/github-actions-agents' -e 'author: grolston' . \
   | xargs sed -i '' \
-      -e 's#platformr/github-actions-agents#<your-org>/<your-agents-repo>#g' \
-      -e 's#author: platformr#author: <your-org>#g'
+      -e 's#grolston/github-actions-agents#<your-org>/<your-agents-repo>#g' \
+      -e 's#author: grolston#author: <your-org>#g'
 ```
 
 Then regenerate the persona actions (their `author:` comes from
@@ -45,11 +44,13 @@ python3 scripts/generate_actions.py
 ```
 
 ```bash
-grep -rn --exclude-dir=.git platformr .
+grep -rn --exclude-dir=.git grolston .
 ```
 
-Update any remaining mentions by hand, such as the organization name in
-the sharing step of [use-in-your-repo.md](use-in-your-repo.md).
+Update any remaining mentions by hand. If your copy is private, also
+change the access paragraph in step 1 of
+[use-in-your-repo.md](use-in-your-repo.md), which says this repository is
+public.
 
 ## 3. Let other repositories use the actions
 

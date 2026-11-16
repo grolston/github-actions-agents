@@ -68,7 +68,7 @@ jobs:
           pattern: plan-*
           path: plans
           merge-multiple: true
-      - uses: platformr/github-actions-agents/.github/actions/deployment-plan-analysis@v1
+      - uses: grolston/github-actions-agents/.github/actions/deployment-plan-analysis@v1
         with:
           aws-region: us-east-1
           role-arn: ${{ secrets.AWS_PR_AGENT_PLAN_ROLE_ARN }}

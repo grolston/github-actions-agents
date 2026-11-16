@@ -4,7 +4,7 @@
 name: "PR Agent: Deployment Plan Analysis"
 description: >-
   Explains CloudFormation change sets / Terraform plans per environment and flags risky changes, using live change set and pricing lookups where useful.
-author: platformr
+author: grolston
 branding:
   icon: layers
   color: orange
