@@ -12,6 +12,13 @@ findings back to the PR.
 | `grolston/github-actions-agents/.github/actions/quota-preflight@v1` | Finds resources the change creates/scales and checks applied Service Quotas and current usage for headroom. Nothing else. | read-only quotas, usage metrics, resource counts |
 | `grolston/github-actions-agents/.github/actions/prerequisite-validator@v1` | Confirms SSM parameters, secrets, hard-coded IDs/ARNs (VPC, subnet, SG, AMI, KMS, ACM, hosted zone, IAM...) and CFN exports the change relies on actually exist. Metadata only: it can never read a parameter or secret value. | metadata-only existence checks |
 | `grolston/github-actions-agents/.github/actions/deployment-plan-analysis@v1` | Explains CloudFormation change sets / Terraform plans per environment and flags data loss, IAM escalation, public exposure, cost, and intent mismatch. | CloudFormation change set and pricing reads |
+| `grolston/github-actions-agents/.github/actions/maintainability@v1` | Flags changes that make the code harder to understand, change, or debug: duplication, tangled responsibilities, hidden failures, misleading names. | nothing else |
+| `grolston/github-actions-agents/.github/actions/conventions@v1` | Checks the change against the conventions written in `AGENTS.md` and `org-rules`. It enforces only rules you wrote down; with none, it reports nothing. | nothing else |
+| `grolston/github-actions-agents/.github/actions/workflow-security@v1` | Reviews changed GitHub Actions workflows and actions for unpinned actions, broad permissions, script injection, and unsafe triggers. | nothing else |
+
+The first three inspect an AWS account. The last three review code only:
+they have no AWS CLI access, and their role exists only to run Claude on
+Bedrock.
 
 ## How it works
 
@@ -62,7 +69,7 @@ Least privilege is enforced in three layers:
 | quota-preflight | invoke Claude; read Service Quotas, usage metrics, resource counts |
 | prerequisite-validator | invoke Claude; read resource metadata (never parameter or secret values) |
 | deployment-plan-analysis | invoke Claude; read change sets for allowed stacks and pricing |
-| a persona with `"aws_cli": false` | invoke Claude only |
+| maintainability, conventions, workflow-security (`"aws_cli": false`) | invoke Claude only |
 
 Because the role calls Bedrock, Bedrock (with access to the Anthropic model)
 must be usable in **every account where a persona role is deployed**, and
@@ -197,6 +204,9 @@ target branch. The action can't turn that on for you.
     aws-allowed-tools.txt   read-only aws CLI rules (granted when aws_cli is true)
   prerequisite-validator/
   deployment-plan-analysis/
+  maintainability/          code-only personas: no aws-allowed-tools.txt
+  conventions/
+  workflow-security/
   _shared/                  prompt sections + tool allow/deny lists used by every persona
     scripts/                context gathering, prompt build, report render, comment upsert, review thread sync
 infra/cloudformation/

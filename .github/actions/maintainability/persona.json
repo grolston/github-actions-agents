@@ -1,0 +1,8 @@
+{
+  "title": "Maintainability",
+  "description": "Flags changes that make the code harder to understand, change, or debug: duplication, tangled responsibilities, hidden failures, and misleading names. Code only; no AWS access.",
+  "icon": "tool",
+  "aws_cli": false,
+  "role_template": "infra/cloudformation/maintainability/maintainability-role.yml",
+  "inputs": []
+}

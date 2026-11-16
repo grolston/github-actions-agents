@@ -1,0 +1,8 @@
+{
+  "title": "Workflow Security",
+  "description": "Reviews changes to GitHub Actions workflows and composite actions for unpinned actions, broad permissions, script injection, and unsafe triggers. Code only; no AWS access.",
+  "icon": "lock",
+  "aws_cli": false,
+  "role_template": "infra/cloudformation/workflow-security/workflow-security-role.yml",
+  "inputs": []
+}

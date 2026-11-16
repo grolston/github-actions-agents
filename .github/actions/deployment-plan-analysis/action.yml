@@ -12,14 +12,16 @@ branding:
 inputs:
   # --- AWS / Bedrock ---------------------------------------------------------
   aws-region:
-    description: Region the persona inspects (quotas, SSM parameters, IDs, change sets).
+    description: >-
+      Region the persona inspects (quotas, SSM parameters, IDs, change sets).
+      A persona without AWS CLI access uses it only as the Bedrock region.
     required: true
   role-arn:
     description: >-
       This persona's IAM role (infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml), assumed via OIDC. It is
       the persona's only AWS identity: it invokes Claude on Bedrock and makes
-      the persona's read-only AWS CLI calls. Pass it from a repository or
-      environment secret.
+      the persona's read-only AWS CLI calls, if it has any. Pass it from a
+      repository or environment secret.
     required: true
   bedrock-region:
     description: Region used for Bedrock calls. Defaults to aws-region.

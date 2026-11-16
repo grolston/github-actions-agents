@@ -57,6 +57,12 @@ Deploy only the roles for the personas you use:
 | `quota-preflight/quota-preflight-role.yml` | Each account the quota agent checks | `AWS_PR_AGENT_QUOTA_ROLE_ARN` |
 | `prerequisite-validator/prerequisite-validator-role.yml` | Each account the prerequisite agent checks | `AWS_PR_AGENT_PREREQ_ROLE_ARN` |
 | `deployment-plan-analysis/deployment-plan-analysis-role.yml` | The account whose change sets it reads (or any account with Bedrock if it only reads plan files) | `AWS_PR_AGENT_PLAN_ROLE_ARN` |
+| `maintainability/maintainability-role.yml` | Any one account with Bedrock | `AWS_PR_AGENT_MAINTAINABILITY_ROLE_ARN` |
+| `conventions/conventions-role.yml` | Any one account with Bedrock | `AWS_PR_AGENT_CONVENTIONS_ROLE_ARN` |
+| `workflow-security/workflow-security-role.yml` | Any one account with Bedrock | `AWS_PR_AGENT_WORKFLOW_ROLE_ARN` |
+
+The last three review code only and make no AWS CLI calls. Their roles can
+only invoke Claude, so they don't need to be in the account you deploy to.
 
 Because each persona role calls Bedrock, Bedrock must be usable in every
 account where you deploy one (see [Make sure the account can use the
@@ -160,6 +166,11 @@ adjust the region, environment names, and `paths:` filter:
 - [`deployment-plan-analysis.yml`](../examples/workflows/deployment-plan-analysis.yml):
   your own job builds the change sets; the agent analyzes them with its
   persona role, which can't create or run change sets.
+- [`pr-agents-code.yml`](../examples/workflows/pr-agents-code.yml):
+  maintainability and conventions agents on every PR. The conventions
+  agent enforces only what is written in `AGENTS.md` and `org-rules`.
+- [`workflow-security.yml`](../examples/workflows/workflow-security.yml):
+  runs only when a PR changes workflows or actions.
 
 A minimal job:
 
