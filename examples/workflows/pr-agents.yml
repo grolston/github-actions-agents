@@ -1,0 +1,69 @@
+# Copy to .github/workflows/pr-agents.yml in the repository to review.
+# Each agent runs as its own job with only the secrets it needs.
+#
+# One IAM role per agent (Bedrock + its read-only checks). Secrets
+# (repository secrets here; see pr-agents-environments.yml for
+# environment secrets):
+#   AWS_PR_AGENT_QUOTA_ROLE_ARN    infra/cloudformation/quota-preflight/quota-preflight-role.yml
+#   AWS_PR_AGENT_PREREQ_ROLE_ARN   infra/cloudformation/prerequisite-validator/prerequisite-validator-role.yml
+name: PR agents
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "infra/**"
+      - "**/*.tf"
+      - "**/*.yml"
+      - "**/*.yaml"
+      - "**/*.json"
+      - "cdk/**"
+
+# Never use pull_request_target with these agents: it would run with secrets
+# on untrusted fork code. Fork PRs cannot get OIDC tokens, so they are skipped.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-agents-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  quota-preflight:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write        # OIDC -> AWS
+      pull-requests: write   # report comment + review threads
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/quota-preflight@v1
+        with:
+          aws-region: us-east-1
+          target-environment: dev
+          role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
+          fail-on: critical
+
+  prerequisite-validator:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
+        with:
+          aws-region: us-east-1
+          target-environment: dev
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          org-rules: ${{ vars.ORG_DEPLOYMENT_RULES }}
+          fail-on: critical

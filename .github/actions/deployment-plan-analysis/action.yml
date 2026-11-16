@@ -1,0 +1,281 @@
+# GENERATED FILE: do not edit by hand.
+# Source: scripts/action.template.yml + .github/actions/deployment-plan-analysis/agent.json
+# Regenerate: python3 scripts/generate_actions.py
+name: "PR Agent: Deployment Plan Analysis"
+description: >-
+  Explains CloudFormation change sets / Terraform plans per environment and flags risky changes, using live change set and pricing lookups where useful.
+author: grolston
+branding:
+  icon: layers
+  color: orange
+
+inputs:
+  # --- AWS / Bedrock ---------------------------------------------------------
+  aws-region:
+    description: >-
+      Region the agent inspects (quotas, SSM parameters, IDs, change sets).
+      An agent without AWS CLI access uses it only as the Bedrock region.
+    required: true
+  role-arn:
+    description: >-
+      This agent's IAM role (infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml), assumed via OIDC. It is
+      the agent's only AWS identity: it invokes Claude on Bedrock and makes
+      the agent's read-only AWS CLI calls, if it has any. Pass it from a
+      repository or environment secret.
+    required: true
+  bedrock-region:
+    description: Region used for Bedrock calls. Defaults to aws-region.
+    required: false
+    default: ""
+  target-environment:
+    description: >-
+      Label for the environment being checked (dev, stage, prod...). Shown in
+      the report and used to keep one PR comment per agent per environment.
+    required: false
+    default: ""
+  model:
+    description: Bedrock model or inference profile ID.
+    required: false
+    default: us.anthropic.claude-opus-5-5
+  max-turns:
+    description: Maximum agent turns before giving up (reported as verdict "error").
+    required: false
+    default: "60"
+
+  # --- Context -------------------------------------------------------------
+  pr-number:
+    description: Pull request number. Defaults to the triggering pull_request event.
+    required: false
+    default: ""
+  repo-guidance-path:
+    description: >-
+      Repository guidance file read from the PR's BASE branch (never from the
+      PR head, so a PR cannot rewrite the rules it is judged by).
+    required: false
+    default: AGENTS.md
+  org-rules:
+    description: >-
+      Organization standards text passed to the agent. Source it from a
+      trusted place (org variable, another repo), not from the PR.
+    required: false
+    default: ""
+  org-rules-version:
+    description: Version label for org-rules, echoed in the report.
+    required: false
+    default: "unversioned"
+  plan-files:
+    description: >-
+      Newline-separated globs, relative to the
+      workspace, of CloudFormation change set JSON (describe-change-set
+      output) or Terraform `show -json` plan files. Name files
+      <environment>.json or put them in <environment>/ directories so the
+      agent can map them to environments.
+    required: true
+  cost-threshold-usd:
+    description: Monthly cost increase that raises an Important finding.
+    required: false
+    default: "500"
+  extra-instructions:
+    description: Additional trusted instructions appended to the agent prompt.
+    required: false
+    default: ""
+  extra-allowed-tools:
+    description: >-
+      Comma-separated extra Claude Code tool permissions, e.g.
+      "Bash(aws ec2 describe-hosts *)". Keep them read-only.
+    required: false
+    default: ""
+
+  # --- Reporting ----------------------------------------------------------
+  github-token:
+    description: Token used to read the PR and post the report comment.
+    required: false
+    default: ${{ github.token }}
+  comment:
+    description: >-
+      Post the validated report as a PR comment (one per agent and
+      target-environment, updated in place on re-runs).
+    required: false
+    default: "true"
+  review-threads:
+    description: >-
+      Open one resolvable review thread per finding at or above thread-on,
+      anchored on the finding's changed line (else its file, else the first
+      changed file). Re-runs never duplicate threads; threads for findings no
+      longer reported are resolved automatically. Pair with the branch rule
+      "Require conversation resolution before merging" to block merges until
+      every thread is resolved. Requires pull-requests: write.
+    required: false
+    default: "true"
+  thread-on:
+    description: >-
+      Lowest severity that opens a review thread (critical, important, or
+      suggestion).
+    required: false
+    default: important
+  fail-on:
+    description: >-
+      Fail the step when a finding at or above this severity exists:
+      critical, important, suggestion, or never.
+    required: false
+    default: critical
+  fail-on-error:
+    description: Fail the step when the agent cannot produce a valid report.
+    required: false
+    default: "true"
+  allowed-bots:
+    description: Passed to claude-code-action (e.g. "dependabot[bot]") to allow bot-authored PRs.
+    required: false
+    default: ""
+
+outputs:
+  verdict:
+    description: pass | findings | error
+    value: ${{ steps.report.outputs.verdict }}
+  highest-severity:
+    description: critical | important | suggestion | none
+    value: ${{ steps.report.outputs.highest-severity }}
+  findings-count:
+    description: Number of findings.
+    value: ${{ steps.report.outputs.findings-count }}
+  report-json:
+    description: Path to the validated JSON report.
+    value: ${{ steps.report.outputs.report-json }}
+  report-markdown:
+    description: Path to the rendered markdown report.
+    value: ${{ steps.report.outputs.report-markdown }}
+  open-threads:
+    description: Unresolved review threads this agent owns on the PR after the run.
+    value: ${{ steps.threads.outputs.open-threads }}
+
+runs:
+  using: composite
+  steps:
+    - name: Gather pull request context
+      id: context
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        AGENT_DIR: ${{ github.action_path }}
+        AGENT: deployment-plan-analysis
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        ROLE_ARN: ${{ inputs.role-arn }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ inputs.pr-number || github.event.pull_request.number }}
+        REPO_GUIDANCE_PATH: ${{ inputs.repo-guidance-path }}
+        ORG_RULES: ${{ inputs.org-rules }}
+        PLAN_FILES: ${{ inputs.plan-files }}
+      run: bash "$AGENT_DIR/../_shared/scripts/gather-context.sh"
+
+    # One identity per agent: Claude Code uses it for Bedrock, and the
+    # agent's allowlisted aws commands use it for read-only checks.
+    - name: Assume agent role
+      uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+      with:
+        aws-region: ${{ inputs.bedrock-region || inputs.aws-region }}
+        role-to-assume: ${{ inputs.role-arn }}
+        role-session-name: pr-agent-deployment-plan-analysis-${{ github.run_id }}
+        unset-current-credentials: "true"
+        mask-aws-account-id: "false"
+
+    - name: Build agent prompt and tool permissions
+      id: prepare
+      shell: bash
+      env:
+        AGENT_DIR: ${{ github.action_path }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        USE_AWS: ${{ steps.context.outputs.use-aws }}
+        AGENT: deployment-plan-analysis
+        TARGET_REGION: ${{ inputs.aws-region }}
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        MODEL: ${{ inputs.model }}
+        MAX_TURNS: ${{ inputs.max-turns }}
+        ORG_RULES_VERSION: ${{ inputs.org-rules-version }}
+        COST_THRESHOLD_USD: ${{ inputs.cost-threshold-usd }}
+        EXTRA_INSTRUCTIONS: ${{ inputs.extra-instructions }}
+        EXTRA_ALLOWED_TOOLS: ${{ inputs.extra-allowed-tools }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+      run: python3 "$AGENT_DIR/../_shared/scripts/prepare.py"
+
+    - name: Run deployment-plan-analysis agent
+      id: agent
+      continue-on-error: true
+      uses: anthropics/claude-code-action@4fa93a88de49bbef68b10eb15aabedf28ca0e1ed # v1.0.271
+      env:
+        AWS_REGION: ${{ inputs.bedrock-region || inputs.aws-region }}
+      with:
+        use_bedrock: "true"
+        github_token: ${{ inputs.github-token }}
+        allowed_bots: ${{ inputs.allowed-bots }}
+        prompt: ${{ steps.prepare.outputs.prompt }}
+        claude_args: ${{ steps.prepare.outputs.claude-args }}
+
+    - name: Validate and render report
+      id: report
+      if: always() && steps.prepare.outcome == 'success'
+      shell: bash
+      env:
+        AGENT_DIR: ${{ github.action_path }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        AGENT: deployment-plan-analysis
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        TARGET_REGION: ${{ inputs.aws-region }}
+        AGENT_OUTCOME: ${{ steps.agent.outcome }}
+        EXECUTION_FILE: ${{ steps.agent.outputs.execution_file }}
+        STRUCTURED_OUTPUT: ${{ steps.agent.outputs.structured_output }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: python3 "$AGENT_DIR/../_shared/scripts/render_report.py"
+
+    - name: Post report comment
+      if: always() && inputs.comment == 'true' && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        AGENT_DIR: ${{ github.action_path }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+        MARKER: ${{ steps.report.outputs.marker }}
+        BODY_FILE: ${{ steps.report.outputs.report-markdown }}
+      run: bash "$AGENT_DIR/../_shared/scripts/upsert-comment.sh"
+
+    - name: Sync review threads
+      id: threads
+      if: always() && inputs.review-threads == 'true' && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        AGENT_DIR: ${{ github.action_path }}
+        AGENT: deployment-plan-analysis
+        TARGET_ENVIRONMENT: ${{ inputs.target-environment }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.context.outputs.pr-number }}
+        HEAD_SHA: ${{ steps.context.outputs.head-sha }}
+        CONTEXT_DIR: ${{ steps.context.outputs.dir }}
+        REPORT_JSON: ${{ steps.report.outputs.report-json }}
+        THREAD_ON: ${{ inputs.thread-on }}
+      run: python3 "$AGENT_DIR/../_shared/scripts/sync_threads.py"
+
+    # Later steps in the caller's job must not inherit the agent's credentials.
+    - name: Clear agent credentials
+      if: always()
+      shell: bash
+      run: |
+        for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN; do
+          echo "$v=" >> "$GITHUB_ENV"
+        done
+
+    - name: Enforce verdict
+      if: always() && steps.report.outcome == 'success'
+      shell: bash
+      env:
+        SHOULD_FAIL: ${{ steps.report.outputs.should-fail }}
+        REASON: ${{ steps.report.outputs.fail-reason }}
+        AGENT: deployment-plan-analysis
+      run: |
+        if [ "$SHOULD_FAIL" = "true" ]; then
+          echo "::error title=PR agent ($AGENT)::$REASON"
+          exit 1
+        fi

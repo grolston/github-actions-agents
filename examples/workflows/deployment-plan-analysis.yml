@@ -1,0 +1,80 @@
+# Deployment plan analysis. A deploy-tooling job produces change sets (it
+# uses YOUR existing deploy role, not an agent role) and uploads them; the
+# agent job then analyzes the files with the agent's own role
+# (infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml),
+# which can invoke Claude on Bedrock and read change sets and pricing, but
+# can't create or execute change sets.
+name: Deployment plan analysis
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["infra/**"]
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [dev, prod]
+    environment: plan-${{ matrix.env }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ secrets.AWS_CHANGESET_ROLE_ARN }}   # your own deploy/plan role
+      - name: Create change set
+        env:
+          STACK: myapp-${{ matrix.env }}
+          CS: pr-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+        run: |
+          aws cloudformation create-change-set --stack-name "$STACK" --change-set-name "$CS" \
+            --template-body file://infra/app.yml \
+            --parameters file://infra/params/${{ matrix.env }}.json \
+            --capabilities CAPABILITY_NAMED_IAM
+          aws cloudformation wait change-set-create-complete --stack-name "$STACK" --change-set-name "$CS" || true
+          mkdir -p plans
+          aws cloudformation describe-change-set --stack-name "$STACK" --change-set-name "$CS" \
+            --include-property-values > "plans/${{ matrix.env }}.json"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: plan-${{ matrix.env }}
+          path: plans/
+
+  analyze:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write        # OIDC -> agent role
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: plan-*
+          path: plans
+          merge-multiple: true
+      - uses: grolston/github-actions-agents/.github/actions/deployment-plan-analysis@v1
+        with:
+          aws-region: us-east-1
+          role-arn: ${{ secrets.AWS_PR_AGENT_PLAN_ROLE_ARN }}
+          plan-files: |
+            plans/*.json
+          cost-threshold-usd: "250"
+          org-rules: ${{ vars.ORG_DEPLOYMENT_RULES }}
+          org-rules-version: ${{ vars.ORG_DEPLOYMENT_RULES_VERSION }}
+          fail-on: critical

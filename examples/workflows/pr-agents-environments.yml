@@ -1,0 +1,71 @@
+# Same agents, run once per deployment environment. Role ARNs are stored as
+# ENVIRONMENT secrets (Settings > Environments > <env> > Secrets) with the
+# same names in each environment, so each job only ever sees the roles for
+# its own account. Deploy the agent role templates with
+# TrustMode=environment and GitHubEnvironmentName=<env> so the role can only
+# be assumed from a job running in that environment.
+#
+# Tip: create separate environments for agents (e.g. pr-agents-prod) rather
+# than reusing your deploy environments, so required reviewers on the
+# deploy environment do not block PR checks.
+name: PR agents (per environment)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  quota-preflight:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { env: dev,  github_env: pr-agents-dev,  region: us-east-1 }
+          - { env: prod, github_env: pr-agents-prod, region: us-east-1 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ matrix.target.github_env }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/quota-preflight@v1
+        with:
+          aws-region: ${{ matrix.target.region }}
+          target-environment: ${{ matrix.target.env }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_QUOTA_ROLE_ARN }}
+          fail-on: ${{ matrix.target.env == 'prod' && 'important' || 'critical' }}
+
+  prerequisite-validator:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { env: dev,  github_env: pr-agents-dev,  region: us-east-1 }
+          - { env: prod, github_env: pr-agents-prod, region: us-east-1 }
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ matrix.target.github_env }}
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/prerequisite-validator@v1
+        with:
+          aws-region: ${{ matrix.target.region }}
+          target-environment: ${{ matrix.target.env }}
+          role-arn: ${{ secrets.AWS_PR_AGENT_PREREQ_ROLE_ARN }}
+          fail-on: ${{ matrix.target.env == 'prod' && 'important' || 'critical' }}

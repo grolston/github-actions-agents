@@ -1,0 +1,9 @@
+# Read-only change set and pricing lookups; mirrors the agent role's policy.
+# Mirrors infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml.
+Bash(aws cloudformation describe-change-set *)
+Bash(aws cloudformation describe-stacks *)
+Bash(aws cloudformation list-change-sets *)
+Bash(aws cloudformation list-stack-resources *)
+Bash(aws pricing describe-services *)
+Bash(aws pricing get-attribute-values *)
+Bash(aws pricing get-products *)

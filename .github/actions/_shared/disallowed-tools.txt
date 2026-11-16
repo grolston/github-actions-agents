@@ -1,0 +1,33 @@
+# Deny rules win over allow rules. These apply to every agent.
+Edit
+Write
+MultiEdit
+NotebookEdit
+WebFetch
+WebSearch
+Task
+# Block credential exfiltration through the AWS CLI: a custom endpoint would
+# receive signed requests (including the session token), --debug prints them.
+Bash(*--endpoint-url*)
+Bash(*--debug*)
+Bash(*--ca-bundle*)
+Bash(*--no-verify-ssl*)
+Bash(aws configure *)
+# The agent role can invoke Bedrock for Claude Code itself; the agent's
+# shell must not call models or mint other credentials with it.
+Bash(aws bedrock*)
+Bash(aws sts assume-role*)
+Bash(aws sts get-session-token*)
+Bash(aws sts get-federation-token*)
+# No reading the credentials from the environment.
+Bash(env*)
+Bash(printenv*)
+Bash(*AWS_SECRET_ACCESS_KEY*)
+Bash(*AWS_SESSION_TOKEN*)
+# In a Bash rule `*` matches any text, `/` and spaces included (it is not a
+# path glob like the Read rules below), so this covers nested /proc paths.
+Bash(*/proc/*)
+# Credential and process files on the runner.
+Read(~/.aws/**)
+Read(//home/runner/.aws/**)
+Read(//proc/**)

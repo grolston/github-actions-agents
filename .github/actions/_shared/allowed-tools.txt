@@ -1,0 +1,10 @@
+# Tools every agent may use. One Claude Code permission rule per line.
+# Agent-specific rules live in .github/actions/<agent>/allowed-tools.txt and aws-allowed-tools.txt.
+Read
+Glob
+Grep
+Bash(git diff *)
+Bash(git log *)
+Bash(git show *)
+Bash(git ls-files *)
+Bash(jq *)

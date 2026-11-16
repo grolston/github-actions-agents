@@ -1,0 +1,63 @@
+# Code review agents: maintainability and conventions. Neither uses the AWS
+# CLI; each role only invokes Claude on Bedrock, so one account is enough.
+#
+# Secrets (repository secrets here):
+#   AWS_PR_AGENT_MAINTAINABILITY_ROLE_ARN  infra/cloudformation/maintainability/maintainability-role.yml
+#   AWS_PR_AGENT_CONVENTIONS_ROLE_ARN      infra/cloudformation/conventions/conventions-role.yml
+name: PR agents (code review)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Never use pull_request_target with these agents: it would run with secrets
+# on untrusted fork code. Fork PRs cannot get OIDC tokens, so they are skipped.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-agents-code-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  maintainability:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write        # OIDC -> AWS (Bedrock)
+      pull-requests: write   # report comment + review threads
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/maintainability@v1
+        with:
+          aws-region: us-east-1
+          role-arn: ${{ secrets.AWS_PR_AGENT_MAINTAINABILITY_ROLE_ARN }}
+          # Advisory to start with: findings open threads but never fail the
+          # check. Tighten to "critical" once you trust the signal.
+          fail-on: never
+
+  conventions:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/conventions@v1
+        with:
+          aws-region: us-east-1
+          role-arn: ${{ secrets.AWS_PR_AGENT_CONVENTIONS_ROLE_ARN }}
+          # The agent enforces only what is written in AGENTS.md (read from
+          # the base branch) and org-rules. With neither, it reports nothing.
+          org-rules: ${{ vars.ORG_CODE_CONVENTIONS }}
+          org-rules-version: ${{ vars.ORG_CODE_CONVENTIONS_VERSION }}
+          fail-on: critical

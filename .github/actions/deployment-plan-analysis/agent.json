@@ -1,0 +1,11 @@
+{
+  "title": "Deployment Plan Analysis",
+  "description": "Explains CloudFormation change sets / Terraform plans per environment and flags risky changes, using live change set and pricing lookups where useful.",
+  "icon": "layers",
+  "aws_cli": true,
+  "role_template": "infra/cloudformation/deployment-plan-analysis/deployment-plan-analysis-role.yml",
+  "inputs": [
+    "plan-files",
+    "cost-threshold-usd"
+  ]
+}

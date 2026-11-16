@@ -1,0 +1,41 @@
+# Workflow security agent: runs only when a PR changes workflows or actions.
+# It does not use the AWS CLI; its role only invokes Claude on Bedrock.
+#
+# Secret:
+#   AWS_PR_AGENT_WORKFLOW_ROLE_ARN  infra/cloudformation/workflow-security/workflow-security-role.yml
+name: PR agents (workflow security)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/**"
+      - ".github/actions/**"
+      - "**/action.yml"
+      - "**/action.yaml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-agents-workflow-security-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-security:
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write        # OIDC -> AWS (Bedrock)
+      pull-requests: write   # report comment + review threads
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: grolston/github-actions-agents/.github/actions/workflow-security@v1
+        with:
+          aws-region: us-east-1
+          role-arn: ${{ secrets.AWS_PR_AGENT_WORKFLOW_ROLE_ARN }}
+          fail-on: critical
