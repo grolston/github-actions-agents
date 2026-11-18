@@ -42,7 +42,10 @@ Least privilege is enforced in three layers:
    See [Roles and OIDC](#roles-and-oidc).
 2. **OIDC trust**: roles trust only `pull_request` jobs and/or a named GitHub
    environment, optionally only a specific workflow file
-   (`job_workflow_ref`).
+   (`job_workflow_ref`). Run the agents as a required workflow from a central
+   repository and pin the roles to it (`WorkflowRepository`, `WorkflowRef`),
+   so a pull request can't edit the workflow that assumes them. See
+   [docs/use-in-your-repo.md, step 5](docs/use-in-your-repo.md#5-run-the-agents-from-a-central-repository-recommended).
 3. **Agent tools**: Claude Code runs with an allowlist of exact read-only
    `aws` subcommands per agent (`.github/actions/<agent>/aws-allowed-tools.txt`), no
    Edit/Write/Web tools, and deny rules for `--endpoint-url`, `--debug`,
