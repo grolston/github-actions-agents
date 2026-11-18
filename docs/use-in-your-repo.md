@@ -13,11 +13,12 @@ Throughout, `grolston/github-actions-agents` is the agents repository and
 | Who | What |
 |---|---|
 | Someone with AWS access | Deploy the CloudFormation stacks (step 2). |
-| Admin of the app repository | Add secrets and the workflow (steps 3–4); optionally require conversation resolution (step 5). |
+| Admin of the app repository | Add secrets and the workflow (steps 3–4); optionally require conversation resolution (step 6). |
+| Org owner (recommended) | Run the workflow from a central repository through an org ruleset (step 5). |
 
-No GitHub App, token, or org-owner action is needed: the agents comment
+No GitHub App, token, or org-owner action is needed to start: the agents comment
 with the workflow's built-in token. An optional GitHub App gives each agent
-its own name on the PR (step 6).
+its own name on the PR (step 7).
 
 ## 1. GitHub prerequisites
 
@@ -80,6 +81,8 @@ Every role template takes the same trust parameters:
 | `TrustMode` | `pull_request`: jobs without `environment:` (repository secrets). `environment`: only jobs in `GitHubEnvironmentName` (environment secrets). `both`: either. |
 | `GitHubEnvironmentName` | The environment trusted when `TrustMode` is `environment` or `both`. |
 | `WorkflowFile` | Only this workflow file may assume the role, e.g. `pr-agents.yml`. `*` allows any. |
+| `WorkflowRepository` | Repository that holds `WorkflowFile`, when the agents run as a required workflow from a central repository (step 5). Empty = `RepositoryName` itself. |
+| `WorkflowRef` | Ref the workflow file must come from, e.g. `refs/heads/main`. `*` allows any ref, including a pull request's own edited copy. |
 | `OidcProviderArn` | Leave empty to use the account's GitHub provider. |
 
 Two common setups:
@@ -207,7 +210,48 @@ anything the agents should know (naming conventions, accounts, expected
 quotas). The agents read it from the PR's base branch, so a PR can't change
 its own rules.
 
-## 5. Require conversation resolution (optional)
+## 5. Run the agents from a central repository (recommended)
+
+With the workflow in `<org>/<app-repo>`, a pull request runs its own copy of
+it: on `pull_request`, GitHub uses the workflow file from the PR's branch.
+Anyone who can push a branch can then set `fail-on: never`, drop an agent,
+pass `extra-instructions`, or add a step that assumes an agent role and uses
+it. `WorkflowFile` doesn't stop this, because the edited file keeps its name.
+
+Move the workflow somewhere the pull request can't edit, and let the roles
+trust only that copy:
+
+1. **Put the workflow in a central repository**, e.g.
+   `<org>/pr-agents-workflows`, at `.github/workflows/pr-agents.yml`. Protect
+   its default branch. If it is private, allow the org's repositories to use
+   it: **Settings → Actions → General → Access**.
+2. **Require it with an org ruleset**: org **Settings → Rules → Rulesets →
+   New branch ruleset**, target the app repositories' default branch, and add
+   **Require workflows to pass before merging** with that file on `main`.
+   Check that your GitHub plan offers this rule.
+3. **Deploy each role with the central repository and ref:**
+
+   ```bash
+   aws cloudformation deploy --stack-name github-pr-agent-quota-preflight \
+     --template-file infra/cloudformation/quota-preflight/quota-preflight-role.yml \
+     --capabilities CAPABILITY_NAMED_IAM \
+     --parameter-overrides GitHubOrganization=<org> RepositoryName=<app-repo> TrustMode=pull_request \
+       WorkflowRepository=pr-agents-workflows WorkflowFile=pr-agents.yml WorkflowRef=refs/heads/main
+   ```
+
+   The token's `sub` claim still names the app repository, so
+   `RepositoryName` still limits who can assume the role. `job_workflow_ref`
+   now names the central file and its ref, which a pull request can't change.
+   If the ruleset points at a tag or a commit rather than `main`, set
+   `WorkflowRef` to match.
+4. **Remove the app repository's own copy** of the workflow, so the agents
+   don't run twice.
+
+To check it: a pull request runs the agents as before, and a branch that adds
+its own workflow to assume an agent role gets `Not authorized to perform
+sts:AssumeRoleWithWebIdentity`.
+
+## 6. Require conversation resolution (optional)
 
 Each finding at or above `thread-on` (default `important`) opens a review
 thread on the PR. To make merges wait until every thread is resolved:
@@ -221,7 +265,7 @@ resolves its own threads when a later run no longer reports the finding.
 Set `thread-on: suggestion` to open threads for every finding, or
 `review-threads: false` to post only the summary comment.
 
-## 6. Give each agent its own name (optional)
+## 7. Give each agent its own name (optional)
 
 By default every agent posts as `github-actions[bot]`, and the agent is
 named in each comment. To post under an app's name instead, mint a GitHub
@@ -264,7 +308,7 @@ App token and pass it as `github-token`.
 The app token is used for reading the PR and posting comments. The agent
 itself never gets tools that write to GitHub.
 
-## 7. First run checklist
+## 8. First run checklist
 
 Open a test PR that changes an infrastructure file (it has to match the
 workflow's `paths:` filter), then check:
@@ -285,7 +329,7 @@ workflow's `paths:` filter), then check:
 | Symptom | Likely cause |
 |---|---|
 | `Unable to resolve action ... repository not found` | The owner or repository name in `uses:` is wrong, the ref after `@` doesn't exist in the agents repository, or you use a private copy that isn't shared with your org (step 1). |
-| `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, or `id-token: write` is missing. |
+| `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust doesn't match the job: wrong `RepositoryName`, `TrustMode` doesn't match whether the job has `environment:`, the environment name differs, `WorkflowFile` doesn't match the workflow file name, `WorkflowRepository` or `WorkflowRef` doesn't match where the workflow runs from (step 5), or `id-token: write` is missing. |
 | `Credentials could not be loaded` | The secret is empty in this context: an environment secret read by a job without `environment:`, or the reverse. |
 | Bedrock `AccessDeniedException` | Model access not enabled in that account and region, or the `model` input doesn't match `BedrockModelIdPattern` on the agent role. |
 | `Resource not accessible by integration` when commenting | The job is missing `pull-requests: write`, or the PR is from a fork or Dependabot (their token is read-only). |

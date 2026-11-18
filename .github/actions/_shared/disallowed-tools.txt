@@ -22,6 +22,11 @@ Bash(aws sts get-federation-token*)
 # No reading the credentials from the environment.
 Bash(env*)
 Bash(printenv*)
+# jq prints the environment with `env` or `$ENV`, and the agent role's
+# session credentials are in it. jq is not allowed by default; these stop an
+# extra-allowed-tools rule from bringing that back.
+Bash(jq *env*)
+Bash(jq *ENV*)
 Bash(*AWS_SECRET_ACCESS_KEY*)
 Bash(*AWS_SESSION_TOKEN*)
 # In a Bash rule `*` matches any text, `/` and spaces included (it is not a

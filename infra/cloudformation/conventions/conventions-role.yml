@@ -53,6 +53,23 @@ Parameters:
       e.g. pr-agents.yml. * allows any workflow in the trusted repositories.
     Default: "*"
 
+  WorkflowRepository:
+    Type: String
+    Description: >-
+      Repository that holds WorkflowFile, when the agents run as a required
+      workflow from a central repository (an organization ruleset). Empty =
+      the trusted repository itself. Set this so a pull request can't edit
+      the workflow that assumes the role.
+    Default: ""
+
+  WorkflowRef:
+    Type: String
+    Description: >-
+      Git ref WorkflowFile must come from (job_workflow_ref claim), e.g.
+      refs/heads/main. * allows any ref, which includes a pull request's own
+      edited copy of the workflow.
+    Default: "*"
+
   OidcProviderArn:
     Type: String
     Description: GitHub OIDC provider ARN. Empty = this account's token.actions.githubusercontent.com provider.
@@ -78,6 +95,7 @@ Parameters:
     Default: anthropic.claude-*
 
 Conditions:
+  UseCentralWorkflow: !Not [!Equals ["", !Ref WorkflowRepository]]
   UseDefaultProviderArn: !Equals ["", !Ref OidcProviderArn]
   TrustBoth: !Equals [both, !Ref TrustMode]
   TrustPullRequestOnly: !Equals [pull_request, !Ref TrustMode]
@@ -105,7 +123,10 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:job_workflow_ref: !Sub ${GitHubOrganization}/${RepositoryName}/.github/workflows/${WorkflowFile}@*
+                token.actions.githubusercontent.com:job_workflow_ref: !If
+                  - UseCentralWorkflow
+                  - !Sub ${GitHubOrganization}/${WorkflowRepository}/.github/workflows/${WorkflowFile}@${WorkflowRef}
+                  - !Sub ${GitHubOrganization}/${RepositoryName}/.github/workflows/${WorkflowFile}@${WorkflowRef}
                 token.actions.githubusercontent.com:sub: !If
                   - TrustBoth
                   - - !Sub repo:${GitHubOrganization}/${RepositoryName}:pull_request
